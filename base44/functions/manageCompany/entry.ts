@@ -26,10 +26,16 @@ export default async function (req) {
       const company = result.records[0];
       return Response.json({ ok: true, id: company.id, resumed: result.created === 0 });
     }
-    if (body.action !== 'delete') return fail(400, 'acao_invalida');
+    if (!['delete', 'restore'].includes(body.action)) return fail(400, 'acao_invalida');
     if (typeof body.id !== 'string' || !body.id.trim()) return fail(400, 'empresa_invalida');
     const company = await Company.get(body.id).catch(e => e.status === 404 ? null : Promise.reject(e));
     if (!company) return fail(404, 'empresa_inexistente');
+    if (body.action === 'restore') {
+      if (company.status === 'inativa') await Company.update(company.id, { status: 'ativa' });
+      const restored = await Company.get(company.id);
+      if (restored.status !== 'ativa') return fail(409, 'reativacao_nao_confirmada');
+      return Response.json({ ok: true, id: company.id, status: 'ativa' });
+    }
     if (company.status !== 'inativa') await Company.update(company.id, { status: 'inativa' });
     // A conta mestre continua válida para escolher outra empresa.
     await AuthSession.updateMany({ role: 'master', company_id: company.id }, { $set: { company_id: '' } });
