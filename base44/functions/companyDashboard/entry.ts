@@ -51,6 +51,7 @@ export default async function (req) {
       .catch((e) => (e.status === 404 ? null : Promise.reject(e)));
     if (!company) return Response.json({ error: 'empresa_nao_encontrada' }, { status: 404 });
 
+    if (company.status === 'inativa') return Response.json({ error: 'acesso_encerrado' }, { status: 403 });
     const d = new Date();
     const competence = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
     const scope = { company_id: company.id };

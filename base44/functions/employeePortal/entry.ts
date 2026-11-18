@@ -35,6 +35,7 @@ export default async function (req) {
         : Promise.resolve(null),
     ]);
 
+    if (!company || company.status === 'inativa') return Response.json({ error: 'conta_desligada' }, { status: 403 });
     return Response.json({
       ok: true,
       employee: {

@@ -62,7 +62,7 @@ export default function PortalRegister() {
       </form>
       <details className="mt-4 border-t border-border pt-3 text-sm">
         <summary className="cursor-pointer font-medium">Criar minha empresa</summary>
-        <p className="my-2 text-muted-foreground">A conta mestre cadastra a empresa e cria o acesso do dono.</p>
+        <p className="my-2 text-muted-foreground">Entre com a conta mestre para criar e gerenciar suas empresas.</p>
         <Link to="/empresas" className="underline">Acessar cadastro de empresas</Link>
       </details>
     </AuthShell>

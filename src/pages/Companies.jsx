@@ -4,11 +4,12 @@ import { LogOut, RefreshCw } from 'lucide-react';
 import { base44 } from '@/api/base44Client';
 import { Button } from '@/components/ui/button';
 import PageHeader from '@/components/PageHeader';
-import NewCompanyForm from '@/components/companies/NewCompanyForm';
+import { Input } from '@/components/ui/input';
+import Field from '@/components/Field';
 import { useSession } from '@/lib/SessionContext';
 import { formatCpf } from '@/lib/format';
 
-const EXPIRED = ['sessao_invalida', 'sessao_expirada'];
+const EXPIRED = ['sessao_invalida', 'sessao_expirada', 'conta_desligada'];
 
 export default function Companies() {
   const { session, logout, login } = useSession();
@@ -17,20 +18,26 @@ export default function Companies() {
   const [companies, setCompanies] = useState(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
-  const carregando = useRef(false);
+  const request = useRef(0);
+  const changing = useRef(false);
+  const [busy, setBusy] = useState(false);
+  const [name, setName] = useState('');
+  const [notice, setNotice] = useState('');
+  const [actionError, setActionError] = useState('');
 
   // A lista vem do servidor: a sessão mestre é validada lá, as regras de Company seguem fechadas.
   const load = async () => {
-    if (carregando.current) return;
-    carregando.current = true;
+    const current = ++request.current;
     setLoading(true);
     setError('');
     try {
       const res = await base44.functions.invoke('listCompanies', { token: session?.token });
+      if (current !== request.current) return;
       const data = res.data;
       if (!data?.ok) throw new Error(data?.error || 'falha');
       setCompanies(data.companies || []);
     } catch (err) {
+      if (current !== request.current) return;
       const code = err?.data?.error ?? err?.response?.data?.error;
       if (EXPIRED.includes(code) || !session?.token) {
         logout('expired');
@@ -39,12 +46,50 @@ export default function Companies() {
       }
       setError('Não foi possível carregar as empresas agora. Tente novamente.');
     } finally {
-      carregando.current = false;
-      setLoading(false);
+      if (current === request.current) setLoading(false);
     }
   };
 
   useEffect(() => { load(); }, [session?.token]);
+
+  async function manage(action, company) {
+    if (changing.current) return;
+    if (action === 'delete' && !window.confirm(`Excluir “${company.name}” da lista? O acesso à empresa será encerrado. Os dados de folha e os vínculos ficarão preservados.`)) return;
+    changing.current = true;
+    setBusy(true);
+    setNotice('');
+    setActionError('');
+    try {
+      const payload = action === 'create' ? { name: name.trim() } : { id: company.id };
+      const res = await base44.functions.invoke('manageCompany', { action, token: session.token, ...payload });
+      if (!res.data?.ok) throw new Error('falha_servidor');
+      if (action === 'create') {
+        setName('');
+        setNotice(res.data.resumed ? 'A empresa já está na sua lista.' : 'Empresa criada. Clique em Entrar para abrir o painel.');
+      } else {
+        setCompanies(rows => rows?.filter(row => row.id !== company.id));
+        setNotice('Empresa excluída da lista.');
+      }
+      await load();
+    } catch (err) {
+      const code = err?.data?.error ?? err?.response?.data?.error;
+      if (EXPIRED.includes(code)) {
+        logout('expired');
+        navigate('/login?expired=1', { replace: true });
+        return;
+      }
+      const messages = {
+        nome_invalido: 'Informe um nome de 2 a 150 caracteres.',
+        mestre_incompleto: 'Confira o nome e o CPF cadastrados na conta mestre.',
+        somente_mestre: 'Somente a conta mestre pode gerenciar empresas.',
+      };
+      setActionError(messages[code] || 'Não foi possível confirmar a operação. Atualize a lista antes de tentar novamente.');
+      await load();
+    } finally {
+      changing.current = false;
+      setBusy(false);
+    }
+  }
 
   const leave = () => { logout(); navigate('/login', { replace: true }); };
 
@@ -95,9 +140,11 @@ export default function Companies() {
       <main className="mx-auto max-w-4xl px-5 py-10">
         <PageHeader
           code="MESTRE"
-          title="Escolha a empresa"
-          description="Cada empresa tem o próprio dono, funcionários e folha. O painel de cada empresa é aberto pelo dono, entrando com o CPF e a senha dele."
+          title="Minhas empresas"
+          description="Crie suas empresas e escolha qual painel abrir."
         />
+        {notice && <p role="status" className="mb-3 text-sm text-emerald-700">{notice}</p>}
+        {actionError && <p role="alert" className="mb-3 text-sm text-destructive">{actionError}</p>}
         <div className="grid gap-6 md:grid-cols-[1.2fr_1fr] md:items-start">
           <div className="border border-border bg-card">
             {loading && companies === null && <p className="px-4 py-6 text-sm text-muted-foreground">Carregando…</p>}
@@ -113,7 +160,7 @@ export default function Companies() {
               <p className="px-4 py-6 text-sm text-muted-foreground">Nenhuma empresa cadastrada. Use o formulário para criar a primeira empresa.</p>
             )}
             {!error && companies?.map((company) => (
-              <div key={company.id} className="flex items-center justify-between gap-3 border-b border-border px-4 py-3 last:border-0">
+              <div key={company.id} className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3 last:border-0">
                 <div className="min-w-0">
                   <p className="truncate font-medium">{company.name}</p>
                   <p className="truncate text-xs text-muted-foreground">
@@ -124,19 +171,25 @@ export default function Companies() {
                 <div className="flex shrink-0 items-center gap-2">
                   <span
                     className={`hidden border px-2 py-1 font-mono text-[10px] uppercase tracking-wide sm:inline ${
-                      company.owner_linked ? 'border-emerald-600 text-emerald-700' : 'border-destructive text-destructive'
+                      company.owner_linked ? 'border-emerald-600 text-emerald-700' : 'border-border text-muted-foreground'
                     }`}
                   >
-                    {company.owner_linked ? 'dono com acesso' : 'sem dono vinculado'}
+                    {company.owner_linked ? 'dono com acesso' : (company.owner_name || company.owner_cpf) ? 'dono informado' : 'sem dono informado'}
                   </span>
-                  <Button size="sm" onClick={() => enter(company)} disabled={entrando === company.id}>
+                  <Button size="sm" onClick={() => enter(company)} disabled={busy || Boolean(entrando)}>
                     {entrando === company.id ? 'Abrindo…' : 'Entrar'}
                   </Button>
+                  <Button variant="outline" size="sm" className="text-destructive" onClick={() => manage('delete', company)} disabled={busy || Boolean(entrando)} aria-label={`Excluir ${company.name}`}>Excluir</Button>
                 </div>
               </div>
             ))}
           </div>
-          <NewCompanyForm onCreated={load} onRefresh={load} />
+          <form className="space-y-4 border border-border bg-card p-5" onSubmit={event => { event.preventDefault(); manage('create'); }}>
+            <h2 className="font-semibold">Criar empresa</h2>
+            <Field label="Nome da empresa"><Input required minLength={2} maxLength={150} value={name} onChange={event => setName(event.target.value)} /></Field>
+            <p className="text-xs text-muted-foreground">Sua conta mestre será o dono desta empresa.</p>
+            <Button type="submit" disabled={busy || Boolean(entrando) || name.trim().length < 2}>Criar empresa</Button>
+          </form>
         </div>
       </main>
     </div>

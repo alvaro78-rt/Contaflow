@@ -10,6 +10,9 @@ export async function employeeAdmin(base44, token) {
   const companyId = scopeCompany(session, actor);
   if (!companyId) return { response: fail(403, 'sem_empresa') };
   if (!MANAGEMENT_ROLES.includes(actor.access_role)) return { response: fail(403, 'sem_permissao') };
+  const company = await base44.asServiceRole.entities.Company.get(companyId)
+    .catch(e => e.status === 404 ? null : Promise.reject(e));
+  if (!company || company.status === 'inativa') return { response: fail(403, 'sem_empresa') };
   return { actor, companyId, entities: base44.asServiceRole.entities };
 }
 

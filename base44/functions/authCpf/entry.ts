@@ -45,6 +45,8 @@ export default async function (req) {
       if (candidates.length !== 1 || !employee.company_id || employee.birth_date !== birth ||
           (employee.access_role || 'funcionario') !== 'funcionario' || employee.status === 'desligado' || employee.password_hash) return deny();
 
+      const company = await base44.asServiceRole.entities.Company.get(employee.company_id).catch(e => e.status === 404 ? null : Promise.reject(e));
+      if (!company || company.status === 'inativa') return deny();
       const result = await Employee.updateMany({
         id: employee.id, cpf, birth_date: birth, company_id: employee.company_id, status: { $ne: 'desligado' },
         $and: [
@@ -91,6 +93,9 @@ export default async function (req) {
         const company = await base44.asServiceRole.entities.Company
           .get(emp.company_id)
           .catch((e) => (e.status === 404 ? null : Promise.reject(e)));
+        if (emp.access_role !== 'master' && (!company || company.status === 'inativa')) {
+          return Response.json({ error: 'empresa_inativa' }, { status: 403 });
+        }
         companyName = company?.name || '';
       }
 

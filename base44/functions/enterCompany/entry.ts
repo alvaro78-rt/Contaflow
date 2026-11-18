@@ -33,6 +33,7 @@ export default async function (req) {
       .catch((e) => (e.status === 404 ? null : Promise.reject(e)));
     if (!company) return Response.json({ error: 'empresa_inexistente' }, { status: 404 });
 
+    if (company.status === 'inativa') return Response.json({ error: 'empresa_inativa' }, { status: 403 });
     if (company.owner_cpf && !company.owner_name) {
       const pending = await base44.asServiceRole.entities.Employee.filter({
         company_id: 'criando:' + company.name, cpf: company.owner_cpf, access_role: 'admin',

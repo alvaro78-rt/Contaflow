@@ -9,6 +9,7 @@ import { useServices } from '@/lib/ServicesContext';
 import { formatCpf, onlyDigits } from '@/lib/format';
 
 const LOGIN_ERRORS = {
+  empresa_inativa: 'Esta empresa está inativa. Fale com o responsável pelo sistema.',
   credenciais: 'CPF ou senha inválidos.',
   credenciais_incompletas: 'Informe o CPF e a senha.',
   cpf_invalido: 'CPF inválido. Confira os 11 dígitos.',
