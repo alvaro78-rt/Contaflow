@@ -44,7 +44,7 @@ export default async function (req) {
         return fail(403, 'exclusao_bloqueada');
       }
       const history = await Promise.all(HISTORY.map(async (entity) => {
-        const rows = await entities[entity].filter({ company_id: companyId, employee_id: existing.id }, 'id', 1);
+        const rows = await entities[entity].filter({ employee_id: existing.id }, 'id', 1);
         return rows.length > 0;
       }));
       if (history.some(Boolean)) return fail(409, 'funcionario_com_historico');
@@ -82,9 +82,16 @@ export default async function (req) {
         return fail(409, 'cpf_ja_tem_acesso');
       }
       const password_hash = await newPasswordHash(password);
-      const employee = target
-        ? await Employee.update(target.id, { password_hash })
-        : await createChecked(Employee, { ...data, cpf, company_id: companyId, access_role: 'funcionario', status: 'ativo', password_hash });
+      if (target) {
+        const changed = await Employee.updateMany({id:target.id,company_id:companyId,cpf,status:{$ne:'desligado'},
+          $and:[
+            {$or:[{access_role:'funcionario'},{access_role:null},{access_role:{$exists:false}}]},
+            {$or:[{password_hash:''},{password_hash:null},{password_hash:{$exists:false}}]},
+          ]},{$set:{password_hash}});
+        if (changed.updated !== 1) return fail(409,'cpf_ja_tem_acesso');
+        return ok({employee:employeeRow({...target,password_hash})});
+      }
+      const employee = await createChecked(Employee, { ...data, cpf, company_id: companyId, access_role: 'funcionario', status: 'ativo', password_hash });
       return employee ? ok({ employee: employeeRow(employee) }) : fail(409, 'cpf_duplicado');
     }
 
@@ -115,7 +122,12 @@ export default async function (req) {
       const duplicates = await Employee.filter({ company_id: companyId, username: data.username }, 'id', 2);
       if (duplicates.some((e) => e.id !== existing?.id)) return fail(409, 'usuario_duplicado');
     }
-    if (password) data.password_hash = await newPasswordHash(password);
+    if (password) {
+      if (existing?.id === actor.id || (existing?.access_role === 'admin' && actor.access_role !== 'master'))
+        return fail(403, 'perfil_protegido');
+      data.password_hash = await newPasswordHash(password);
+      data.credential_version = crypto.randomUUID();
+    }
 
     // O vínculo é derivado da sessão. A edição preserva os campos de acesso omitidos.
     const fields = { ...data, cpf, access_role: role, status };

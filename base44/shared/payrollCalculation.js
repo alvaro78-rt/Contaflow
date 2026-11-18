@@ -11,8 +11,8 @@ export const DEFAULT_PARAMS = {
 };
 
 export const paramsFromTable = (table) => ({
-  tolerance: Number(table?.tolerance_minutes) || DEFAULT_PARAMS.tolerance,
-  overtimeCapMin: Number(table?.overtime_cap_minutes) || DEFAULT_PARAMS.overtimeCapMin,
+  tolerance: table?.tolerance_minutes ?? DEFAULT_PARAMS.tolerance,
+  overtimeCapMin: table?.overtime_cap_minutes ?? DEFAULT_PARAMS.overtimeCapMin,
   overtimeRate: Number(table?.overtime_rate) || DEFAULT_PARAMS.overtimeRate,
   fgtsRate: Number(table?.fgts_rate) || DEFAULT_PARAMS.fgtsRate,
   absenceDivisor: Number(table?.absence_divisor) || DEFAULT_PARAMS.absenceDivisor,
@@ -25,10 +25,10 @@ export function calcInss(base, bands = []) {
   let total = 0;
   for (const band of sorted) {
     const limit = Number(band.limit);
-    if (base > prev) total += (Math.min(base, limit) - prev) * Number(band.rate || 0);
+    if (base > prev) total += Math.floor(Math.round((Math.min(base, limit) - prev) * 100) * Math.round(band.rate * 10000) / 10000);
     prev = limit;
   }
-  return round2(total);
+  return total / 100;
 }
 
 // IRRF pela faixa em que a base se enquadra: base × alíquota − parcela a deduzir.
@@ -40,13 +40,16 @@ export function irrfTax(base, bands = []) {
 }
 
 // O contribuinte usa a opção mais favorável: deduções legais (INSS + dependentes) ou desconto simplificado.
-export function calcIrrf({ earnings, inss, dependents, table }) {
+export function calcIrrf({ earnings, inss, dependents, table, paymentDate }) {
   if (!table) return { tax: 0, base: 0 };
   const dependentsDeduction = (Number(table.irrf_dependent_deduction) || 0) * (Number(dependents) || 0);
   const legalDeductions = Number(inss || 0) + dependentsDeduction;
   const simplified = Number(table.irrf_simplified_discount) || 0;
   const base = round2(Math.max(0, earnings - Math.max(legalDeductions, simplified)));
-  return { tax: irrfTax(base, table.irrf_bands), base };
+  const grossTax = irrfTax(base, table.irrf_bands);
+  const reduction = paymentDate?.startsWith('2026-') && earnings <= 7350
+    ? (earnings <= 5000 ? 312.89 : round2(978.62 - .133145 * earnings)) : 0;
+  return { tax: round2(Math.max(0, grossTax - reduction)), base };
 }
 
 // FGTS: 8% regra geral, 2% para aprendiz e não aplicável a estágio (sem vínculo de emprego).
@@ -93,7 +96,7 @@ export function dayStats(day, s, params = DEFAULT_PARAMS) {
   const lateRaw = e - toMin(s.entry_time);
   const late = lateRaw > params.tolerance ? lateRaw : 0;
   const extra = worked - scheduledMinutes(s);
-  const overtime = extra > params.tolerance ? Math.min(extra, params.overtimeCapMin) : 0;
+  const overtime = extra > params.tolerance ? extra : 0;
   return { worked, late, overtime, incomplete: false };
 }
 
@@ -132,7 +135,7 @@ export function validatePayrollInput({ employee, schedule, table }) {
   return problems;
 }
 
-export function buildPayroll({ employee, positionName, competence, stats, rubrics = [], table }) {
+export function buildPayroll({ employee, positionName, competence, stats, rubrics = [], table, paymentDate, taxDependents }) {
   const p = paramsFromTable(table);
   const salary = Number(employee.base_salary) || 0;
   const weekly = Number(employee.weekly_hours) || 44;
@@ -145,17 +148,13 @@ export function buildPayroll({ employee, positionName, competence, stats, rubric
     const percent = Math.round((p.overtimeRate - 1) * 100);
     earnings.push({ description: `Horas extras ${percent}% (${fmtMin(stats.overtime)}h)`, value: overtimeValue });
   }
+  if (stats.dsrExtra > 0) earnings.push({description:'Reflexo de extras no DSR', value:stats.dsrExtra});
   const fixed = (cat) => rubrics.filter((r) => r.category === cat && r.auto_apply && r.fixed_value > 0)
     .map((r) => ({ description: r.name, value: round2(r.fixed_value) }));
   earnings.push(...fixed('provento'));
   const total_earnings = round2(earnings.reduce((a, b) => a + b.value, 0));
 
-  const inss = calcInss(total_earnings, table?.inss_bands);
-  const dependents = (employee.dependents || []).length;
-  const irrf = calcIrrf({ earnings: total_earnings, inss, dependents, table });
-
-  const deductions = [{ description: 'INSS', value: inss }];
-  if (irrf.tax > 0) deductions.push({ description: 'IRRF', value: irrf.tax });
+  const deductions = [];
   if (stats.absences > 0) {
     deductions.push({
       description: `Faltas (${stats.absences} dia(s))`,
@@ -163,11 +162,18 @@ export function buildPayroll({ employee, positionName, competence, stats, rubric
     });
   }
   if (stats.late > 0) deductions.push({ description: `Atrasos (${fmtMin(stats.late)}h)`, value: round2((stats.late / 60) * hourly) });
+  if (stats.dsrDiscount > 0) deductions.push({description:'Perda de DSR conferida',value:stats.dsrDiscount});
+  const taxable = round2(total_earnings - deductions.reduce((a,b) => a+b.value,0));
+  const inss = calcInss(taxable,table.inss_bands);
+  const dependents = taxDependents;
+  const irrf = calcIrrf({earnings:taxable,inss,dependents,table,paymentDate});
+  deductions.push({description:'INSS',value:inss});
+  if (irrf.tax > 0) deductions.push({description:'IRRF',value:irrf.tax});
   deductions.push(...fixed('desconto'));
   const total_deductions = round2(deductions.reduce((a, b) => a + b.value, 0));
 
   const fgtsRate = fgtsRateFor(employee, table);
-  const fgtsValue = round2(total_earnings * fgtsRate);
+  const fgtsValue = round2(taxable * fgtsRate);
   const informatives = [
     {
       description: fgtsRate > 0 ? `FGTS ${(fgtsRate * 100).toFixed(0)}% — depósito do empregador` : 'FGTS — não aplicável (estágio)',
@@ -191,10 +197,10 @@ export function buildPayroll({ employee, positionName, competence, stats, rubric
     total_deductions,
     net_salary: round2(total_earnings - total_deductions),
     calc_memory: {
-      inss_base: total_earnings,
+      inss_base: taxable,
       irrf_base: irrf.base,
       irrf_dependents: dependents,
-      fgts_base: total_earnings,
+      fgts_base: taxable,
       fgts_rate: fgtsRate,
       hourly_rate: round2(hourly),
       overtime_rate: p.overtimeRate,

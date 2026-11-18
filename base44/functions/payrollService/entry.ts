@@ -1,110 +1,205 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.54';
 import { employeeAdmin, fail, ok, scopedRecord } from '../../shared/employeeAdmin.ts';
-import { buildPayroll, monthStats, paramsFromTable, validatePayrollInput } from '../../shared/payrollCalculation.js';
+import { buildPayroll, validatePayrollInput } from '../../shared/payrollCalculation.js';
+import {
+  hasUnscopedHistory,
+  monthRange,
+  validDate,
+  validMonth,
+  withEmployeeLock,
+} from '../../shared/attendance.js';
+import { consistentReceipt, reviewAttendance, verifiedTable } from '../../shared/payrollReview.js';
 
-const validCompetence = (v) => /^\d{4}-(0[1-9]|1[0-2])$/.test(v || '');
-const inForce = (table, comp) => table && table.active !== false &&
-  (!table.start_competence || table.start_competence <= comp) &&
-  (!table.end_competence || table.end_competence >= comp);
+const incomplete = (problems) => Response.json({ error: 'cadastro_incompleto', problems }, { status: 422 });
+const applies = (t, comp) =>
+  t.active !== false && validMonth(t.start_competence) &&
+  t.start_competence <= comp && (!t.end_competence || t.end_competence >= comp);
 
-// All financial operations take their actor and company from the validated server session.
+async function calculate({ entities, companyId, actor }, emp, body) {
+  const { competence, payment_date, tax_dependents, paid_days, unpaid_days, dsr_extra, dsr_discount } = body;
+  const query = { company_id: companyId, employee_id: emp.id };
+  const range = monthRange(competence);
+  const closed = new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Recife' }).format(new Date());
+  if (
+    range.$lte >= closed || !validDate(payment_date) || payment_date < range.$lte ||
+    !Number.isInteger(tax_dependents) ||
+    tax_dependents < 0 || tax_dependents > 99 || body.reviewed_inputs !== true
+  ) {
+    return incomplete([
+      'Informe uma competência encerrada, a data de pagamento e os dependentes fiscais. Confirme os dados do período.',
+    ]);
+  }
+  if (
+    emp.status === 'afastado' || emp.status === 'desligado' || emp.contract_type !== 'CLT' ||
+    !validDate(emp.admission_date) || emp.admission_date > range.$gte
+  ) {
+    return incomplete([
+      'O fluxo mensal exige contrato CLT ativo durante toda a competência. Confira admissão, férias, afastamentos e desligamentos.',
+    ]);
+  }
+  const legacy = await Promise.all([
+    hasUnscopedHistory(entities.TimeRecord, { employee_id: emp.id, date: range }),
+    hasUnscopedHistory(entities.Vacation, { employee_id: emp.id }),
+    hasUnscopedHistory(entities.Termination, { employee_id: emp.id }),
+  ]);
+  if (legacy.some(Boolean)) return fail(409, 'historico_sem_empresa');
+  const [position, schedule, marks, rubrics, tables, vacations, terminations] = await Promise.all([
+    scopedRecord(entities.Position, emp.position_id, companyId),
+    scopedRecord(entities.WorkSchedule, emp.schedule_id, companyId),
+    entities.TimeRecord.filter({ ...query, date: range }, { limit: 500 }),
+    entities.Rubric.filter({ company_id: companyId, auto_apply: true }, { limit: 100 }),
+    entities.LegalTable.filter({}, { limit: 100 }),
+    entities.Vacation.filter({ ...query, start_date: { $lte: range.$lte }, end_date: { $gte: range.$gte } }, {
+      limit: 1,
+    }),
+    entities.Termination.filter({ ...query, termination_date: { $lte: range.$lte } }, { limit: 1 }),
+  ]);
+  if ([marks, rubrics, tables].some((r) => !Array.isArray(r.items) || r.next_cursor)) {
+    return fail(409, 'limite_consulta');
+  }
+  if (vacations.items.length || terminations.items.length) {
+    return incomplete(['Há férias ou rescisão a conciliar nesta competência.']);
+  }
+  const applicable = tables.items.filter((t) => applies(t, competence));
+  const table = applicable.length === 1 ? applicable[0] : null;
+  const problems = validatePayrollInput({ employee: emp, schedule, table });
+  if (!emp.full_name || !emp.cpf) problems.push('Confira a identificação do funcionário.');
+  if (
+    !position || !Number.isFinite(emp.base_salary) || !Number.isFinite(emp.weekly_hours) ||
+    emp.weekly_hours <= 0
+  ) {
+    problems.push('Confira cargo, salário e carga horária semanal.');
+  }
+  if (!verifiedTable(table, competence, payment_date) || !applies(table || {}, payment_date.slice(0, 7))) {
+    problems.push(
+      'Confira a vigência e as faixas oficiais de INSS e IRRF de 2026. É necessária uma única tabela compatível com o pagamento.',
+    );
+  }
+  if (
+    rubrics.items.some((r) =>
+      !Number.isFinite(r.fixed_value) || r.fixed_value <= 0 ||
+      !['provento', 'desconto', 'informativa'].includes(r.category) || !r.name ||
+      (r.category !== 'informativa' && !r.incidence_reviewed)
+    )
+  ) {
+    problems.push('Revise a natureza e as incidências de cada rubrica automática.');
+  }
+  const review = reviewAttendance(
+    marks.items,
+    schedule,
+    competence,
+    paid_days,
+    unpaid_days,
+    table?.tolerance_minutes,
+  );
+  problems.push(...review.problems);
+  const { stats } = review;
+  if (
+    ![dsr_extra, dsr_discount].every((v) =>
+      Number.isFinite(v) && v >= 0 && Math.abs(v * 100 - Math.round(v * 100)) < .00001
+    ) ||
+    (dsr_extra > 0 && !stats?.overtime) || (dsr_discount > 0 && !stats?.absences && !stats?.late)
+  ) {
+    problems.push(
+      'Informe o reflexo de extras e a perda de DSR conferidos, inclusive zero quando inaplicáveis.',
+    );
+  }
+  if (problems.length) return incomplete(problems);
+  stats.dsrExtra = dsr_extra;
+  stats.dsrDiscount = dsr_discount;
+  const data = buildPayroll({
+    employee: emp,
+    positionName: position.name,
+    competence,
+    stats,
+    rubrics: rubrics.items,
+    table,
+    paymentDate: payment_date,
+    taxDependents: tax_dependents,
+  });
+  if (!consistentReceipt(data)) return fail(422, 'valores_inconsistentes');
+  return ok({
+    payroll: await entities.Payroll.create({
+      ...data,
+      ...query,
+      input_review: {
+        payment_date,
+        tax_dependents,
+        paid_days,
+        unpaid_days,
+        dsr_extra,
+        dsr_discount,
+        actor_id: actor.id,
+        version: 1,
+      },
+    }),
+  });
+}
+
 export default async function (req) {
   if (req.method !== 'POST') return fail(405, 'metodo_invalido');
   try {
-    const body = await req.json().catch(() => null);
+    const body = await req.json();
     const admin = await employeeAdmin(createClientFromRequest(req), body?.token);
     if (admin.response) return admin.response;
     const { companyId, entities, actor } = admin;
-    const action = body?.action || 'calculate';
-    const allowed = ['calculate', 'approve', 'finalize', 'view'];
-    if (!allowed.includes(action)) return fail(400, 'acao_invalida');
+    const action = body.action;
+    if (!['calculate', 'view', 'approve', 'finalize'].includes(action)) return fail(400, 'acao_invalida');
     if (actor.access_role === 'gerente' && action !== 'calculate') return fail(403, 'sem_permissao');
-
-    if (action === 'view') {
-      const employee = await scopedRecord(entities.Employee, body?.employee_id, companyId);
-      if (!employee) return fail(404, 'funcionario_inexistente');
-      if (!validCompetence(body?.competence)) return fail(400, 'competencia_invalida');
-      const result = await entities.Payroll.filter({
-        company_id: companyId, employee_id: employee.id, competence: body.competence,
-      }, { limit: 2 });
-      if (result.items.length > 1) return fail(409, 'folhas_duplicadas');
-      return ok({ payroll: result.items[0] || null });
-    }
-
-    if (action === 'approve' || action === 'finalize') {
-      const record = await scopedRecord(entities.Payroll, body?.payroll_id, companyId);
-      if (!record) return fail(404, 'folha_inexistente');
-      if (!Number.isFinite(record.total_earnings) || !Number.isFinite(record.total_deductions) ||
-          !Number.isFinite(record.net_salary) ||
-          Math.abs(record.net_salary - (record.total_earnings - record.total_deductions)) > 0.005) {
-        return fail(409, 'valores_inconsistentes');
+    if (action !== 'view' && body.expected_company_id !== companyId) return fail(409, 'empresa_alterada');
+    const transition = action === 'approve' || action === 'finalize';
+    const target = transition ? await scopedRecord(entities.Payroll, body.payroll_id, companyId) : null;
+    if (transition && !target) return fail(404, 'folha_inexistente');
+    const competence = transition ? target.competence : body.competence;
+    if (!validMonth(competence)) return fail(400, 'competencia_invalida');
+    const employee = await scopedRecord(
+      entities.Employee,
+      transition ? target.employee_id : body.employee_id,
+      companyId,
+    );
+    if (!employee || employee.access_role === 'master') return fail(404, 'funcionario_inexistente');
+    const query = { company_id: companyId, employee_id: employee.id, competence };
+    const process = async () => {
+      if (await hasUnscopedHistory(entities.Payroll, { employee_id: employee.id, competence })) {
+        return fail(409, 'historico_sem_empresa');
       }
-      if (action === 'approve') {
-        if (record.status !== 'rascunho') return fail(409, 'situacao_invalida');
-        const reviewer = typeof body.reviewer === 'string' ? body.reviewer.trim() : '';
-        if (!reviewer || reviewer.length > 150) return fail(400, 'conferente_invalido');
-        const updated = await entities.Payroll.update(record.id, {
-          status: 'aprovada', reviewed_by: reviewer, reviewed_at: new Date().toISOString(),
-        });
-        return ok({ payroll: updated });
+      const rows = await entities.Payroll.filter(query, { limit: 2 });
+      if (rows.next_cursor || rows.items.length > 1) return fail(409, 'folhas_duplicadas');
+      const row = rows.items[0];
+      if (action === 'view') return ok({ payroll: row || null });
+      if (action === 'calculate') {
+        if (row) return ok({ payroll: row, existing: true, existing_final: row.status === 'finalizada' });
+        return await calculate(admin, employee, body);
       }
-      if (record.status !== 'aprovada' || !record.reviewed_by) return fail(409, 'situacao_invalida');
-      const updated = await entities.Payroll.update(record.id, {
-        status: 'finalizada', finalized_at: new Date().toISOString(),
+      if (!row || row.id !== target.id || row.status !== (action === 'approve' ? 'rascunho' : 'aprovada')) {
+        return fail(409, 'situacao_invalida');
+      }
+      if (row.input_review?.version !== 1) {
+        return incomplete([
+          'A folha é anterior à conferência de insumos. Preserve o histórico e faça a conciliação contábil antes de mudar a situação.',
+        ]);
+      }
+      if (
+        !consistentReceipt(row) || !row.legal_table_id ||
+        (action === 'finalize' && (!row.reviewed_by || !row.reviewed_at))
+      ) return fail(409, 'valores_inconsistentes');
+      const now = new Date().toISOString();
+      const fields = action === 'approve'
+        ? {
+          status: 'aprovada',
+          reviewed_by: actor.full_name || actor.id,
+          reviewer_id: actor.id,
+          reviewed_at: now,
+        }
+        : { status: 'finalizada', finalized_at: now, finalizer_id: actor.id };
+      const result = await entities.Payroll.updateMany({ ...query, id: row.id, status: row.status }, {
+        $set: fields,
       });
-      return ok({ payroll: updated });
-    }
-
-    const competence = body?.competence;
-    if (!validCompetence(competence)) return fail(400, 'competencia_invalida');
-    const emp = await scopedRecord(entities.Employee, body?.employee_id, companyId);
-    if (!emp || emp.access_role === 'master') return fail(404, 'funcionario_inexistente');
-    if (emp.status === 'desligado') return fail(409, 'funcionario_desligado');
-    if (emp.admission_date && competence < emp.admission_date.slice(0, 7))
-      return fail(409, 'competencia_anterior_admissao');
-
-    // Never overwrite an approved or finalized payroll. One draft per employee/competence.
-    const existing = await entities.Payroll.filter({ company_id: companyId, employee_id: emp.id, competence }, { limit: 2 });
-    if (existing.items.length > 1) return fail(409, 'folhas_duplicadas');
-    const old = existing.items[0];
-    if (old?.status === 'finalizada') return ok({ payroll: old, existing_final: true });
-    if (old?.status === 'aprovada') return fail(409, 'folha_aprovada');
-
-    const [position, schedule, records, rubrics, legal] = await Promise.all([
-      emp.position_id ? scopedRecord(entities.Position, emp.position_id, companyId) : Promise.resolve(null),
-      emp.schedule_id ? scopedRecord(entities.WorkSchedule, emp.schedule_id, companyId) : Promise.resolve(null),
-      entities.TimeRecord.filter({ company_id: companyId, employee_id: emp.id, date: { $gte: `${competence}-01`, $lte: `${competence}-31` } }, { limit: 501 }),
-      entities.Rubric.filter({ company_id: companyId, auto_apply: true }, { limit: 101 }),
-      entities.LegalTable.filter({}, { sort: '-start_competence', limit: 100 }),
-    ]);
-    if (!records?.items || !rubrics?.items || !legal?.items) return fail(503, 'consulta_incompleta');
-    if (records.items.length > 500 || records.next_cursor || rubrics.items.length > 100 || rubrics.next_cursor ||
-        legal.next_cursor) return fail(409, 'limite_consulta');
-
-    // An empty attendance period must be reviewed before the app assumes absences.
-    if (!records.items.length) return fail(422, 'ponto_nao_conferido');
-
-    const table = legal.items.find(t => inForce(t, competence)) || null;
-    const problems = validatePayrollInput({ employee: emp, schedule, table });
-    if (!position) problems.push('Cargo não encontrado na empresa. Confira o cadastro do funcionário.');
-    if (problems.length) return Response.json({ error: 'cadastro_incompleto', problems }, { status: 422 });
-    if (!Array.isArray(table.inss_bands) || !table.inss_bands.length ||
-        !Array.isArray(table.irrf_bands) || !table.irrf_bands.length) {
-      return fail(422, 'tabela_legal_incompleta');
-    }
-    const stats = monthStats(records.items, schedule, competence, paramsFromTable(table), emp.admission_date || '');
-    const data = buildPayroll({ employee: emp, positionName: position.name, competence,
-      stats, rubrics: rubrics.items, table });
-    if (![data.total_earnings, data.total_deductions, data.net_salary].every(Number.isFinite) ||
-        Math.abs(data.net_salary - (data.total_earnings - data.total_deductions)) > 0.005) {
-      return fail(422, 'valores_inconsistentes');
-    }
-    const saved = old
-      ? await entities.Payroll.update(old.id, { ...data, company_id: companyId })
-      : await entities.Payroll.create({ ...data, company_id: companyId });
-    if (!saved?.id) return fail(503, 'salvamento_nao_confirmado');
-    return ok({ payroll: saved, existing_final: false });
-  } catch (err) {
+      if (result.updated !== 1) return fail(409, 'situacao_invalida');
+      return ok({ payroll: { ...row, ...fields } });
+    };
+    return action === 'view' ? await process() : await withEmployeeLock(entities, employee, process);
+  } catch {
     return fail(500, 'falha_servidor');
   }
 }

@@ -4,18 +4,23 @@
   "rls": {
     "read": false,
     "create": {
-      "user_condition": {
-        "email": "deny-all@invalid.invalid"
-      }
+      "$and": [
+        { "user_condition": { "role": "admin" } },
+        { "user_condition": { "role": "user" } }
+      ]
     },
     "update": {
-      "user_condition": {
-        "email": "deny-all@invalid.invalid"
-      }
+      "$and": [
+        { "user_condition": { "role": "admin" } },
+        { "user_condition": { "role": "user" } }
+      ]
     },
     "delete": false
   },
   "properties": {
+    "input_review": { "type": "object", "properties": { "payment_date": {"type":"string"}, "tax_dependents": {"type":"number"}, "dsr_extra":{"type":"number"}, "dsr_discount":{"type":"number"}, "unpaid_days":{"type":"array","items":{"type":"string"}}, "paid_days":{"type":"array","items":{"type":"string"}}, "actor_id":{"type":"string"}, "version":{"type":"number"} } },
+    "reviewer_id": {"type":"string"},
+    "finalizer_id": {"type":"string"},
     "company_id": {
       "type": "string"
     },

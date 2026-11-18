@@ -15,7 +15,7 @@ export async function loadSession(base44, token) {
   const actor = await base44.asServiceRole.entities.Employee
     .get(session.employee_id)
     .catch((e) => (e.status === 404 ? null : Promise.reject(e)));
-  if (!actor) return { status: 401, error: 'sessao_invalida' };
+  if (!actor || (actor.credential_version || '') !== (session.credential_version || '')) return { status: 401, error: 'sessao_invalida' };
   if (actor.status === 'desligado') return { status: 403, error: 'conta_desligada' };
 
   return { session, actor };

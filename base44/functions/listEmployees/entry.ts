@@ -16,6 +16,8 @@ export default async function (req) {
     if (body.id !== undefined) {
       const employee = await scopedRecord(entities.Employee, body.id, companyId);
       if (!employee || employee.access_role === 'master') return fail(404, 'funcionario_inexistente');
+      if (admin.actor.access_role === 'gerente' && employee.id !== admin.actor.id &&
+          (employee.access_role || 'funcionario') !== 'funcionario') return fail(403,'perfil_protegido');
       return ok({ employee: employeeDetails(employee) });
     }
 

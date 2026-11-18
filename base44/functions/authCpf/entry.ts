@@ -1,4 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.54';
+import { loadSession } from '../../shared/sessionGuard.ts';
 import { onlyDigits } from '../../shared/authHelpers.ts';
 import { isValidCpf } from '../../shared/cpf.ts';
 import { newPasswordHash, verifyPassword } from '../../shared/passwords.ts';
@@ -58,6 +59,27 @@ export default async function (req) {
       return Response.json({ ok: true });
     }
 
+    if (action === 'changePassword' || action === 'logout') {
+      const loaded = await loadSession(base44, body.token);
+      if (loaded.error) return Response.json({ error: loaded.error }, { status: loaded.status });
+      const { actor, session } = loaded;
+      const entities = base44.asServiceRole.entities;
+      if (action === 'logout') {
+        await entities.AuthSession.deleteMany({ id: session.id, token: session.token });
+        return Response.json({ ok: true });
+      }
+      if (typeof body.current !== 'string' || body.current.length > 128 ||
+          typeof body.password !== 'string' || body.password.length < 6 || body.password.length > 128)
+        return Response.json({ error: 'senha_invalida' }, {status: 400});
+      if (!await verifyPassword(actor.password_hash, actor.cpf, body.current))
+        return Response.json({error: 'senha_atual_incorreta'}, {status: 403});
+      const result = await entities.Employee.updateMany({ id: actor.id, password_hash: actor.password_hash }, {
+        $set: {password_hash: await newPasswordHash(body.password), credential_version: crypto.randomUUID()},
+      });
+      if (result.updated !== 1) return Response.json({error: 'conta_alterada'}, {status: 409});
+      return Response.json({ok: true});
+    }
+
     if (action === 'login') {
       const cpf = onlyDigits(body?.cpf);
       const password = String(body?.password || '');
@@ -69,7 +91,8 @@ export default async function (req) {
         return Response.json({ error: 'cpf_invalido' }, { status: 400 });
       }
 
-      const { items } = await base44.asServiceRole.entities.Employee.filter({ cpf }, { limit: 10 });
+      const { items, next_cursor } = await base44.asServiceRole.entities.Employee.filter({ cpf }, { limit: 10 });
+      if (next_cursor) return Response.json({error:'cpf_duplicado'}, {status:409});
       const comSenha = items.filter((item) => item.password_hash);
       // O login pede apenas CPF e senha: o mesmo CPF não pode apontar para duas contas.
       if (comSenha.length > 1) {
@@ -105,6 +128,7 @@ export default async function (req) {
       await base44.asServiceRole.entities.AuthSession.create({
         token,
         employee_id: emp.id,
+        credential_version: emp.credential_version || '',
         role: emp.access_role || 'funcionario',
         expires_at: expiresAt,
       });
@@ -126,6 +150,6 @@ export default async function (req) {
 
     return Response.json({ error: 'acao_invalida' }, { status: 400 });
   } catch (error) {
-    return Response.json({ error: 'falha_servidor', message: error.message }, { status: 500 });
+    return Response.json({ error: 'falha_servidor' }, { status: 500 });
   }
 }

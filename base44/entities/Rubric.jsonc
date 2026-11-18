@@ -4,18 +4,21 @@
   "rls": {
     "read": false,
     "create": {
-      "user_condition": {
-        "email": "deny-all@invalid.invalid"
-      }
+      "$and": [
+        { "user_condition": { "role": "admin" } },
+        { "user_condition": { "role": "user" } }
+      ]
     },
     "update": {
-      "user_condition": {
-        "email": "deny-all@invalid.invalid"
-      }
+      "$and": [
+        { "user_condition": { "role": "admin" } },
+        { "user_condition": { "role": "user" } }
+      ]
     },
     "delete": false
   },
   "properties": {
+    "incidence_reviewed": { "type": "boolean" },
     "company_id": {
       "type": "string"
     },

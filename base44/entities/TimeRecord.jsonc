@@ -4,14 +4,16 @@
   "rls": {
     "read": false,
     "create": {
-      "user_condition": {
-        "email": "deny-all@invalid.invalid"
-      }
+      "$and": [
+        { "user_condition": { "role": "admin" } },
+        { "user_condition": { "role": "user" } }
+      ]
     },
     "update": {
-      "user_condition": {
-        "email": "deny-all@invalid.invalid"
-      }
+      "$and": [
+        { "user_condition": { "role": "admin" } },
+        { "user_condition": { "role": "user" } }
+      ]
     },
     "delete": false
   },
@@ -52,6 +54,7 @@
       "items": {
         "type": "object",
         "properties": {
+          "actor_id": { "type": "string" },
           "previous": {
             "type": "string"
           },

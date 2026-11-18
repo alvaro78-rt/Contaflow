@@ -5,18 +5,21 @@
   "rls": {
     "read": false,
     "create": {
-      "user_condition": {
-        "email": "deny-all@invalid.invalid"
-      }
+      "$and": [
+        { "user_condition": { "role": "admin" } },
+        { "user_condition": { "role": "user" } }
+      ]
     },
     "update": {
-      "user_condition": {
-        "email": "deny-all@invalid.invalid"
-      }
+      "$and": [
+        { "user_condition": { "role": "admin" } },
+        { "user_condition": { "role": "user" } }
+      ]
     },
     "delete": false
   },
   "properties": {
+    "credential_version": { "type": "string" },
     "token": {
       "type": "string",
       "description": "Token opaco emitido no login"

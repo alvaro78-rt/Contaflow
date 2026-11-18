@@ -1,5 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.54';
 
+import { loadSession } from '../../shared/sessionGuard.ts';
+
 // Leitura do painel do dono. Empresa e perfil saem da sessão validada aqui, nunca do navegador.
 // O corpo da requisição só traz o token: não existe parâmetro de empresa.
 export default async function (req) {
@@ -11,29 +13,9 @@ export default async function (req) {
 
   try {
     const body = await req.json().catch(() => ({}));
-    const token = String(body?.token || '').trim();
-    if (!token) return Response.json({ error: 'sessao_invalida' }, { status: 401 });
-
-    const { items: sessions } = await base44.asServiceRole.entities.AuthSession.filter(
-      { token },
-      { limit: 1 },
-    );
-    const session = sessions[0];
-    if (!session || !session.employee_id) {
-      return Response.json({ error: 'sessao_invalida' }, { status: 401 });
-    }
-    if (!session.expires_at || new Date(session.expires_at).getTime() <= Date.now()) {
-      return Response.json({ error: 'sessao_expirada' }, { status: 401 });
-    }
-
-    // Funcionário e vínculo vêm do banco: o perfil salvo decide o que pode ser lido.
-    const actor = await base44.asServiceRole.entities.Employee
-      .get(session.employee_id)
-      .catch((e) => (e.status === 404 ? null : Promise.reject(e)));
-    if (!actor) return Response.json({ error: 'sessao_invalida' }, { status: 401 });
-    if (actor.status === 'desligado') {
-      return Response.json({ error: 'acesso_encerrado' }, { status: 403 });
-    }
+    const loaded = await loadSession(base44, body?.token);
+    if (loaded.error) return Response.json({error: loaded.error}, {status: loaded.status});
+    const {actor, session} = loaded;
 
     // Perfil autorizado a ver os totais financeiros: dono da empresa (admin) ou a conta
     // mestre que entrou nesta empresa. O gerente pode ler os indicadores de pessoal.

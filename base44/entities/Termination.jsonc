@@ -4,18 +4,24 @@
   "rls": {
     "read": false,
     "create": {
-      "user_condition": {
-        "email": "deny-all@invalid.invalid"
-      }
+      "$and": [
+        { "user_condition": { "role": "admin" } },
+        { "user_condition": { "role": "user" } }
+      ]
     },
     "update": {
-      "user_condition": {
-        "email": "deny-all@invalid.invalid"
-      }
+      "$and": [
+        { "user_condition": { "role": "admin" } },
+        { "user_condition": { "role": "user" } }
+      ]
     },
     "delete": false
   },
   "properties": {
+    "source_reference": {"type":"string"},
+    "recorded_by": {"type":"string"},
+    "payment_date": {"type":"string"},
+    "paid_by": {"type":"string"},
     "company_id": {
       "type": "string"
     },

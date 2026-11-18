@@ -29,7 +29,8 @@ export default async function (req) {
       const position = await scopedRecord(entities.Position, body.position_id, companyId);
       if (!employee) return fail(404, 'funcionario_inexistente');
       if (!position) return fail(404, 'cargo_invalido');
-      if (employee.access_role === 'master' || employee.status === 'desligado') return fail(403, 'perfil_protegido');
+      if ((admin.actor.access_role === 'gerente' && (employee.access_role || 'funcionario') !== 'funcionario') ||
+          employee.access_role === 'master' || employee.status === 'desligado') return fail(403, 'perfil_protegido');
       if (employee.position_id !== position.id) {
         await entities.Employee.update(employee.id, { position_id: position.id });
       }
