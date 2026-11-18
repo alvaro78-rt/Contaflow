@@ -3,17 +3,21 @@ import PageHeader from '@/components/PageHeader';
 import Empty from '@/components/Empty';
 import { Button } from '@/components/ui/button';
 import { currentCompetence, money } from '@/lib/format';
-import { inForce, loadLegalTables, vigenciaLabel } from '@/lib/legalTable';
+import { rh } from '@/api/rh';
+import { useSession } from '@/lib/SessionContext';
+import { inForce, vigenciaLabel } from '@/lib/legalTable';
 import LegalTableForm from '@/components/params/LegalTableForm';
 
 export default function LegalParams() {
   const [tables, setTables] = useState(null);
   const [editing, setEditing] = useState(null);
   const [formOpen, setFormOpen] = useState(false);
+  const {session} = useSession();
+  const [error,setError] = useState('');
   const comp = currentCompetence();
 
-  const load = () => loadLegalTables().then(setTables);
-  useEffect(() => { load(); }, []);
+  const load = () => rh(session,'legalTables').then(r => {setTables(r.items);setError('');}).catch(e => setError(e.message));
+  useEffect(() => { load(); }, [session]);
 
   const vigente = useMemo(() => (tables || []).find((t) => inForce(t, comp)), [tables, comp]);
 
@@ -32,7 +36,8 @@ export default function LegalParams() {
         )}
       </div>
 
-      {formOpen ? (
+      {error && <p role="alert">{error}</p>}
+      {session.master && (formOpen ? (
         <LegalTableForm
           initial={editing}
           onCancel={() => { setFormOpen(false); setEditing(null); }}
@@ -40,7 +45,7 @@ export default function LegalParams() {
         />
       ) : (
         <div className="flex justify-end"><Button onClick={() => { setEditing(null); setFormOpen(true); }}>Nova tabela</Button></div>
-      )}
+      ))}
 
       {tables === null && <p className="text-sm text-muted-foreground">Carregando tabelas…</p>}
       {tables && tables.length === 0 && <Empty>Nenhuma tabela legal cadastrada.</Empty>}
@@ -55,7 +60,7 @@ export default function LegalParams() {
               </p>
               <p className="text-xs text-muted-foreground">Vigência: {vigenciaLabel(t)}</p>
             </div>
-            <Button variant="outline" size="sm" onClick={() => { setEditing(t); setFormOpen(true); }}>Editar</Button>
+            {session.master && <Button variant="outline" size="sm" onClick={() => { setEditing(t); setFormOpen(true); }}>Alterar vigência</Button>}
           </div>
           <div className="grid gap-px bg-border sm:grid-cols-3">
             <div className="bg-card px-4 py-3">

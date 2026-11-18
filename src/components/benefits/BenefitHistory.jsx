@@ -9,7 +9,7 @@ const STATUS_LABEL = {
   registrada: 'Registrada',
 };
 
-export default function BenefitHistory({ records, empty, reference, showStatus = true, onOpen, onStatus, onDelete }) {
+export default function BenefitHistory({ records, empty, reference, showStatus = true, onOpen, onStatus, onDelete = undefined }) {
   if (!records.length) return <Empty>{empty}</Empty>;
   return (
     <div className="overflow-x-auto border border-border bg-card">

@@ -1,6 +1,8 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { base44 } from '@/api/base44Client';
+import { getEmployee } from '@/api/employeeAdmin';
+import { rh } from '@/api/rh';
+import { useSession } from '@/lib/SessionContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -23,34 +25,34 @@ export default function TimeCorrection() {
   const [locked, setLocked] = useState(false);
   const { toast } = useToast();
 
-  // Marcação de competência já finalizada em folha não pode ser corrigida.
+  const { session } = useSession();
+  const [error, setError] = useState('');
+  const [revision, setRevision] = useState(0);
   useEffect(() => {
-    if (!emp || !date) return setLocked(false);
-    base44.entities.Payroll.filter({ employee_id: emp.id, competence: date.slice(0, 7), status: 'finalizada' }, { limit: 1 })
-      .then((r) => setLocked(r.items.length > 0));
-  }, [emp, date]);
-
-  useEffect(() => {
+    let current = true;
     const id = params.get('employee');
-    if (id) base44.entities.Employee.get(id).then(setEmp);
-  }, [params]);
-
-  const load = useCallback(async () => {
-    if (!emp || !date) return;
-    const r = await base44.entities.TimeRecord.filter({ employee_id: emp.id, date }, { limit: 10 });
-    setRecords(KINDS.map(([k]) => r.items.find((x) => x.kind === k)).filter(Boolean));
-  }, [emp, date]);
-  useEffect(() => { load(); setSel(null); }, [load]);
-
+    if (id) getEmployee(session.token, id).then(r => { if (current) setEmp(r.employee); })
+      .catch(() => { if (current) setError('Funcionário não encontrado nesta empresa.'); });
+    return () => { current = false; };
+  }, [params, session]);
+  useEffect(() => {
+    let current = true;
+    setSel(null); setRecords([]); setLocked(true); setError('');
+    if (emp && date) rh(session, 'time', { employee_id: emp.id, date })
+      .then(r => { if (current) { setRecords(r.items); setLocked(r.locked); } })
+      .catch(e => { if (current) setError(e.message); });
+    return () => { current = false; };
+  }, [emp, date, session, revision]);
   const save = async () => {
-    const previous = sel.corrected_time || sel.original_time;
-    const corrections = [...(sel.corrections || []), { previous, time, justification: just.trim(), at: new Date().toISOString() }];
-    await base44.entities.TimeRecord.update(sel.id, { corrected_time: time, justification: just.trim(), corrections });
-    toast({ title: 'Correção registrada', description: 'A marcação original foi preservada.' });
-    setSel(null); setTime(''); setJust(''); load();
+    try {
+      await rh(session, 'correctMark', { employee_id: emp.id, date, id: sel.id, time, reason: just,
+        previous: sel.corrected_time || sel.original_time, revision: (sel.corrections || []).length });
+      toast({ title: 'Correção registrada' });
+      setSel(null); setRevision(n => n + 1);
+    } catch (e) { setError(e.message); }
   };
 
-  const label = (k) => KINDS.find(([x]) => x === k)[1];
+  const label = (k) => KINDS.find(([x]) => x === k)?.[1] || k;
 
   return (
     <div className="space-y-6">
@@ -59,9 +61,10 @@ export default function TimeCorrection() {
         <Field label="Funcionário"><EmployeePicker value={emp} onChange={setEmp} /></Field>
         <Field label="Data da marcação"><Input type="date" value={date} onChange={(e) => setDate(e.target.value)} /></Field>
       </div>
-      {locked && (
+      {error && <p role="alert">{error}</p>}
+      {locked && records.length > 0 && (
         <p className="border border-destructive bg-red-50 px-4 py-3 text-sm text-destructive">
-          A folha de {competenceLabel(date.slice(0, 7))} deste funcionário está finalizada — as marcações do período não podem mais ser corrigidas.
+          A folha de {competenceLabel(date.slice(0, 7))} deste funcionário já foi registrada — as marcações do período não podem mais ser corrigidas.
         </p>
       )}
       {emp && date && records.length === 0 && <Empty>Nenhuma marcação encontrada para {fmtDate(date)}.</Empty>}

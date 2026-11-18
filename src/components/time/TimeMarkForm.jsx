@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { base44 } from '@/api/base44Client';
+import { rh } from '@/api/rh';
+import { useSession } from '@/lib/SessionContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -8,6 +9,8 @@ import Field from '@/components/Field';
 import { KINDS } from '@/components/time/TimeTable';
 
 export default function TimeMarkForm({ employeeId, existing, onSaved }) {
+  const { session } = useSession();
+  const [reason, setReason] = useState('');
   const [date, setDate] = useState('');
   const [time, setTime] = useState('');
   const [kind, setKind] = useState('entry');
@@ -18,7 +21,8 @@ export default function TimeMarkForm({ employeeId, existing, onSaved }) {
       toast({ title: 'Marcação já existe', description: 'Já há um registro desse tipo neste dia. Use a Correção de Ponto.', variant: 'destructive' });
       return;
     }
-    await base44.entities.TimeRecord.create({ employee_id: employeeId, date, kind, original_time: time });
+    try { await rh(session, 'addMark', { employee_id: employeeId, date, kind, time, reason }); }
+    catch (e) { toast({title: e.message, variant: 'destructive'}); return; }
     toast({ title: 'Marcação registrada' });
     setTime('');
     onSaved();
@@ -34,7 +38,8 @@ export default function TimeMarkForm({ employeeId, existing, onSaved }) {
         </Select>
       </Field>
       <Field label="Horário"><Input type="time" value={time} onChange={(e) => setTime(e.target.value)} /></Field>
-      <Button variant="outline" disabled={!date || !time} onClick={save}>Simular leitura biométrica</Button>
+      <Field label="Motivo da inclusão"><Input value={reason} onChange={e => setReason(e.target.value)} /></Field>
+      <Button variant="outline" disabled={!date || !time || !reason.trim()} onClick={save}>Registrar ponto manual</Button>
     </div>
   );
 }

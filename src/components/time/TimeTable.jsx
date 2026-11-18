@@ -38,7 +38,7 @@ export default function TimeTable({ days, absentDates, schedule, employeeId, can
                 <td className="px-4 py-2 font-mono text-xs">{fmtDate(d)} <span className="text-muted-foreground">{dow}</span></td>
                 {KINDS.map(([k]) => <td key={k} className="px-4 py-2"><Cell rec={day?.[k]} /></td>)}
                 <td className="space-x-1 px-4 py-2">
-                  {!day && <Badge variant="destructive">Falta</Badge>}
+                  {!day && <Badge variant="destructive">Sem marcação</Badge>}
                   {st?.late > 0 && <Badge variant="outline" className="border-amber-500 text-amber-700">Atraso {fmtMin(st.late)}</Badge>}
                   {st?.overtime > 0 && <Badge variant="outline" className="border-emerald-600 text-emerald-700">Extra {fmtMin(st.overtime)}</Badge>}
                   {st?.incomplete && <Badge variant="outline">Incompleto</Badge>}

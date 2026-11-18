@@ -82,12 +82,12 @@ const AuthenticatedApp = () => {
             <Route path="/funcionarios/novo/rapido" element={<NewEmployee />} />
             <Route path="/funcionarios/:id/editar" element={<EmployeeForm />} />
             <Route path="/cargos" element={<Positions />} />
+            <Route path="/folha" element={<PayrollGenerate />} />
             <Route path="/jornadas" element={<Schedules />} />
           </Route>
           <Route element={<AdminOnly />}>
             <Route path="/correcao-ponto" element={<TimeCorrection />} />
             <Route path="/rubricas" element={<Rubrics />} />
-            <Route path="/folha" element={<PayrollGenerate />} />
             <Route path="/ferias" element={<Vacations />} />
             <Route path="/decimo-terceiro" element={<Thirteenth />} />
             <Route path="/rescisao" element={<Termination />} />

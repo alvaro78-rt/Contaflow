@@ -10,7 +10,11 @@ export default function Layout() {
   const { session, login, logout } = useSession();
   const navigate = useNavigate();
   const section = MODULES.find((m) => pathname === m.path || (m.path !== '/' && pathname.startsWith(m.path + '/')));
-  const leave = () => { logout(); navigate('/login', { replace: true }); };
+  const leave = async () => {
+    try { await base44.functions.invoke('authCpf', { action: 'logout', token: session.token }); }
+    catch { /* A sessão local também precisa ser encerrada quando o servidor está indisponível. */ }
+    finally { logout(); navigate('/login', { replace: true }); }
+  };
   // Volta para a escolha de empresas: limpa a empresa em uso também no servidor.
   const switchCompany = async () => {
     try {

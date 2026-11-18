@@ -11,7 +11,7 @@ import { currentCompetence } from '@/lib/format';
 
 export default function PayslipLookup({ title }) {
   const { session } = useSession();
-  const own = session?.role === 'funcionario';
+  const own = ['funcionario', 'gerente'].includes(session?.role);
   const [emp, setEmp] = useState(null);
   const [comp, setComp] = useState(currentCompetence());
   const [payroll, setPayroll] = useState(null);
@@ -36,8 +36,11 @@ export default function PayslipLookup({ title }) {
       if (!res.data?.ok) throw new Error('resposta_invalida');
       setPayroll(res.data.payroll || null);
       setSearched(true);
-    } catch {
-      setError('Não foi possível consultar o contracheque. Verifique sua conexão ou tente novamente.');
+    } catch (e) {
+      const code = (e.data || e.response?.data)?.error;
+      setError(code === 'historico_sem_empresa' || code === 'folhas_duplicadas'
+        ? 'O RH precisa conferir o vínculo ou a duplicidade desta folha no histórico.'
+        : 'Não foi possível consultar o contracheque. Verifique sua sessão e tente novamente.');
     } finally {
       setLoading(false);
     }

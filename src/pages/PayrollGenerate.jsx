@@ -15,12 +15,23 @@ export default function PayrollGenerate() {
   const [emp, setEmp] = useState(null);
   const [comp, setComp] = useState(currentCompetence());
   const [payroll, setPayroll] = useState(null);
+  const [payment, setPayment] = useState('');
+  const [dependents, setDependents] = useState('');
+  const [paidDays, setPaidDays] = useState('');
+  const [unpaidDays, setUnpaidDays] = useState('');
+  const [dsrExtra, setDsrExtra] = useState('');
+  const [dsrDiscount, setDsrDiscount] = useState('');
+  const [reviewed, setReviewed] = useState(false);
   const [message, setMessage] = useState('');
   const [problems, setProblems] = useState([]);
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
 
   const { session } = useSession();
+  const resetReview = () => {
+    setPayment(''); setDependents(''); setPaidDays(''); setUnpaidDays('');
+    setDsrExtra(''); setDsrDiscount(''); setReviewed(false);
+  };
   const process = async () => {
     if (!emp || !comp || loading) return;
     setLoading(true);
@@ -30,12 +41,16 @@ export default function PayrollGenerate() {
     try {
       // Calculation and write are carried out in a validated Base44 function.
       const response = await base44.functions.invoke('payrollService', {
-        action: 'calculate', token: session?.token, employee_id: emp.id, competence: comp,
+        action: 'calculate', expected_company_id: session.company_id, payment_date: payment,
+        tax_dependents: dependents === '' ? null : Number(dependents), reviewed_inputs: reviewed,
+        unpaid_days: unpaidDays.split(/[,\s]+/).filter(Boolean),
+        dsr_extra: dsrExtra === '' ? null : Number(dsrExtra), dsr_discount: dsrDiscount === '' ? null : Number(dsrDiscount),
+        paid_days: paidDays.split(/[,\s]+/).filter(Boolean), token: session?.token, employee_id: emp.id, competence: comp,
       });
       if (!response.data?.ok || !response.data?.payroll) throw new Error('resposta_invalida');
       setPayroll(response.data.payroll);
-      if (response.data.existing_final) {
-        setMessage('Esta folha já foi finalizada e não pode ser recalculada.');
+      if (response.data.existing || response.data.existing_final) {
+        setMessage('Folha já registrada. Os valores originais foram preservados.');
       } else {
         toast({ title: 'Folha calculada e salva para conferência' });
       }
@@ -46,6 +61,7 @@ export default function PayrollGenerate() {
         setProblems(data.problems);
       } else {
         const messages = {
+          historico_sem_empresa: 'O RH precisa conciliar um registro antigo sem vínculo de empresa.',
           folha_aprovada: 'Esta folha já foi aprovada. Não é permitido recalcular sem uma revisão autorizada.',
           folhas_duplicadas: 'Existem folhas duplicadas para esta competência. Solicite revisão antes de continuar.',
           competencia_anterior_admissao: 'A competência selecionada é anterior à admissão do funcionário.',
@@ -70,9 +86,18 @@ export default function PayrollGenerate() {
     <div className="space-y-6">
       <PageHeader code="RF10 · RF12 · RF16" title="Folha de pagamento" description="Selecione a competência e o funcionário. INSS, IRRF e FGTS são calculados pela tabela legal vigente e a folha passa por conferência antes de ser finalizada." />
       <div className="grid gap-4 md:grid-cols-[1fr_200px_auto] md:items-end">
-        <Field label="Funcionário"><EmployeePicker value={emp} onChange={(e) => { setEmp(e); setPayroll(null); setProblems([]); }} /></Field>
-        <Field label="Competência"><Input type="month" value={comp} onChange={(e) => { setComp(e.target.value); setPayroll(null); setProblems([]); }} /></Field>
+        <Field label="Funcionário"><EmployeePicker value={emp} onChange={(e) => { setEmp(e); resetReview(); setPayroll(null); setProblems([]); }} /></Field>
+        <Field label="Competência"><Input type="month" value={comp} onChange={(e) => { setComp(e.target.value); resetReview(); setPayroll(null); setProblems([]); }} /></Field>
         <Button disabled={!emp || !comp || loading} onClick={process}>{loading ? 'Processando…' : 'Processar folha'}</Button>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Field label="Data do pagamento"><Input type="date" value={payment} onChange={e => {setPayment(e.target.value); setReviewed(false);}} /></Field>
+        <Field label="Dependentes fiscais confirmados"><Input type="number" min="0" max="99" value={dependents} onChange={e => {setDependents(e.target.value); setReviewed(false);}} /></Field>
+        <Field label="Feriados e folgas remuneradas sem ponto (AAAA-MM-DD, separados por vírgula)"><Input value={paidDays} onChange={e => {setPaidDays(e.target.value); setReviewed(false);}} /></Field>
+        <Field label="Faltas descontáveis confirmadas (AAAA-MM-DD, separadas por vírgula)"><Input value={unpaidDays} onChange={e => {setUnpaidDays(e.target.value);setReviewed(false);}} /></Field>
+        <Field label="Reflexo de horas extras no DSR (R$, inclusive zero)"><Input type="number" min="0" step=".01" value={dsrExtra} onChange={e => {setDsrExtra(e.target.value);setReviewed(false);}} /></Field>
+        <Field label="Desconto de DSR (R$, inclusive zero)"><Input type="number" min="0" step=".01" value={dsrDiscount} onChange={e => {setDsrDiscount(e.target.value);setReviewed(false);}} /></Field>
+        <label><input type="checkbox" checked={reviewed} onChange={e => setReviewed(e.target.checked)} /> Conferi ponto, salário e rubricas da competência. É uma folha mensal integral, com um vínculo, sem outros pagamentos tributáveis no mês, compensação de horas, trabalho em feriados, férias, afastamentos, deduções adicionais ou verbas pendentes.</label>
       </div>
       {problems.length > 0 && (
         <ul className="border border-destructive bg-red-50 px-4 py-3 text-sm text-destructive">

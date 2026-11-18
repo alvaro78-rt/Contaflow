@@ -16,7 +16,7 @@ export default function EmployeeTimeClock() {
 
   const refresh = useCallback(async () => {
     try {
-      const result = await base44.functions.invoke('employeePortal', { token: session?.token });
+      const result = await base44.functions.invoke('employeePortal', { token: session?.token, action: 'attendance' });
       if (!result.data?.ok) throw new Error('falha');
       setData(result.data);
     } catch {
@@ -28,12 +28,7 @@ export default function EmployeeTimeClock() {
 
   const records = (data?.time?.records || []).slice().sort((a, b) =>
     a.date.localeCompare(b.date) || a.original_time.localeCompare(b.original_time));
-  const dateParts = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'America/Recife', year: 'numeric', month: '2-digit', day: '2-digit',
-  }).formatToParts(new Date());
-  const dateValue = key => dateParts.find(p => p.type === key)?.value || '';
-  const today = `${dateValue('year')}-${dateValue('month')}-${dateValue('day')}`;
-  // Compare by kind rather than trusting browser clock for the actual persisted timestamp.
+  const today = data?.today;
   const todays = records.filter(r => r.date === today);
   const orderedKinds = ['entry', 'break_start', 'break_end', 'exit'];
   const last = todays.length ? orderedKinds[Math.max(...todays.map(r => orderedKinds.indexOf(r.kind)))] : '';
@@ -51,8 +46,12 @@ export default function EmployeeTimeClock() {
       const code = err?.response?.data?.error ?? err?.data?.error;
       const errors = {
         marcacao_duplicada: 'Esta marcação já foi registrada hoje.',
+        historico_sem_empresa: 'O RH precisa conciliar um registro antigo sem vínculo de empresa.',
+        folha_existente: 'Já existe folha nesta competência. Entre em contato com o RH.',
         sequencia_invalida: 'A sequência de marcações não é válida. Atualize e confira seus registros.',
         ponto_requer_conferencia: 'Há marcações que precisam ser conferidas pelo RH.',
+        funcionario_afastado: 'Seu cadastro está afastado. Confira a situação com o RH.',
+        operacao_em_andamento: 'Outra operação está em andamento. Atualize e tente novamente.',
         sem_permissao: 'Seu perfil não pode registrar ponto nesta tela.',
       };
       setError(errors[code] || 'Não foi possível registrar o ponto. Confira a conexão e tente novamente.');

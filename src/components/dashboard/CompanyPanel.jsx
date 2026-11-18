@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { useSession } from '@/lib/SessionContext';
 import { competenceLabel, money } from '@/lib/format';
 
-const SESSION_ERRORS = ['sessao_invalida', 'sessao_expirada', 'acesso_encerrado'];
+const SESSION_ERRORS = ['sessao_invalida', 'sessao_expirada', 'acesso_encerrado', 'conta_desligada'];
 
 // Painel da empresa em uso, lido no servidor com a sessão validada.
 export default function CompanyPanel() {
@@ -90,7 +90,7 @@ export default function CompanyPanel() {
       )}
 
       <div className="grid gap-px border border-border bg-border sm:grid-cols-2 lg:grid-cols-3">
-        {MODULES.map(({ path, code, title, desc, icon: Icon }) => (
+        {MODULES.filter(m => session?.role !== 'gerente' || ['/funcionarios/novo','/funcionarios','/cargos','/jornadas','/ponto','/folha','/contracheques'].includes(m.path)).map(({ path, code, title, desc, icon: Icon }) => (
           <Link key={path} to={path} className="group bg-card p-6 transition-colors hover:bg-accent">
             <div className="mb-8 flex items-center justify-between">
               <Icon className="h-6 w-6 text-primary group-hover:text-emerald-700" strokeWidth={1.5} />

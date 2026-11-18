@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { escapeRegExp } from 'lodash';
-import { base44 } from '@/api/base44Client';
+import { rh } from '@/api/rh';
+import { useSession } from '@/lib/SessionContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -8,7 +8,7 @@ import PageHeader from '@/components/PageHeader';
 import Field from '@/components/Field';
 import Empty from '@/components/Empty';
 import PayrollSheet, { STATUS_LABEL } from '@/components/payroll/PayrollSheet';
-import { money, competenceLabel, formatCpf, onlyDigits } from '@/lib/format';
+import { money, competenceLabel, formatCpf } from '@/lib/format';
 
 export default function PastPayrolls() {
   const [comp, setComp] = useState('');
@@ -16,14 +16,19 @@ export default function PastPayrolls() {
   const [rows, setRows] = useState(null);
   const [open, setOpen] = useState(null);
 
-  const search = async () => {
-    const query = {};
-    if (comp) query.competence = comp;
-    if (q) query.$or = [{ employee_name: { $regex: escapeRegExp(q), $options: 'i' } }, { employee_cpf: { $regex: onlyDigits(q) || 'x' } }];
-    const r = await base44.entities.Payroll.filter(query, { sort: '-competence', limit: 100 });
-    setRows(r.items);
+  const { session } = useSession();
+  const [error, setError] = useState('');
+  const [cursor, setCursor] = useState(null);
+  const [filter, setFilter] = useState({});
+  const search = async (more = false) => {
+    const criteria = more ? filter : { competence: comp, term: q.trim() };
+    try {
+      const r = await rh(session, 'history', { ...criteria, cursor: more ? cursor : undefined });
+      setRows(old => more ? [...(old || []), ...r.items] : r.items);
+      setFilter(criteria); setCursor(r.next_cursor); setError('');
+    } catch (e) { setError(e.message); setCursor(null); setRows(null); }
   };
-  useEffect(() => { search(); }, []);
+  useEffect(() => { search(); }, [session]);
 
   return (
     <div>
@@ -31,8 +36,9 @@ export default function PastPayrolls() {
       <div className="mb-6 grid gap-3 sm:grid-cols-[200px_1fr_auto] sm:items-end">
         <Field label="Competência"><Input type="month" value={comp} onChange={(e) => setComp(e.target.value)} /></Field>
         <Field label="Funcionário (nome ou CPF)"><Input value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && search()} /></Field>
-        <Button onClick={search}>Pesquisar</Button>
+        <Button onClick={() => search()}>Pesquisar</Button>
       </div>
+      {error && <p role="alert">{error}</p>}
       {rows && rows.length === 0 && <Empty>Nenhuma folha correspondente foi encontrada.</Empty>}
       {rows && rows.length > 0 && (
         <div className="overflow-x-auto border border-border bg-card">
@@ -48,8 +54,8 @@ export default function PastPayrolls() {
                   <td className="px-4 py-2">{competenceLabel(p.competence)}</td>
                   <td className="px-4 py-2 font-medium">{p.employee_name}</td>
                   <td className="px-4 py-2 font-mono text-xs">{formatCpf(p.employee_cpf)}</td>
-                  <td className="px-4 py-2 text-right font-mono">{money(p.base_salary)}</td>
-                  <td className="px-4 py-2 text-right font-mono font-semibold">{money(p.net_salary)}</td>
+                  <td className="px-4 py-2 text-right font-mono">{Number.isFinite(p.base_salary) ? money(p.base_salary) : '—'}</td>
+                  <td className="px-4 py-2 text-right font-mono font-semibold">{Number.isFinite(p.net_salary) ? money(p.net_salary) : '—'}</td>
                   <td className="px-4 py-2 text-xs">{STATUS_LABEL[p.status]}</td>
                   <td className="px-4 py-2 text-right"><button className="text-xs text-emerald-700 underline" onClick={() => setOpen(p)}>Detalhes</button></td>
                 </tr>
@@ -58,6 +64,7 @@ export default function PastPayrolls() {
           </table>
         </div>
       )}
+      {cursor && <Button onClick={() => search(true)}>Carregar mais</Button>}
       <Dialog open={!!open} onOpenChange={(o) => !o && setOpen(null)}>
         <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
           <DialogHeader><DialogTitle>Folha registrada</DialogTitle></DialogHeader>

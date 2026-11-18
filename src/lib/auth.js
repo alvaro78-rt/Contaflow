@@ -7,6 +7,3 @@ export async function hashPassword(cpf, password) {
 }
 
 export const ROLE_LABEL = { admin: 'Administrador', gerente: 'Gerente', funcionario: 'Colaborador', master: 'Conta mestre' };
-
-// Perfis com acesso ao administrativo (cadastro, ponto, folha, relatórios).
-export const ADMIN_ROLES = ['admin', 'gerente', 'funcionario'];

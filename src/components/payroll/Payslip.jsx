@@ -4,6 +4,9 @@ import { money, competenceLabel, formatCpf } from '@/lib/format';
 import { downloadPayslipPdf } from '@/lib/payslipPdf';
 
 export default function Payslip({ payroll: p, title = 'Contracheque' }) {
+  if (!Array.isArray(p?.earnings) || !Array.isArray(p?.deductions)) {
+    return <p role="alert">As verbas detalhadas deste recibo estão incompletas. Solicite a conferência do histórico ao RH.</p>;
+  }
   const rows = Math.max(p.earnings.length, p.deductions.length);
   return (
     <div className="space-y-3">

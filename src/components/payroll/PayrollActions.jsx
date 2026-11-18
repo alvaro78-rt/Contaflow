@@ -2,13 +2,11 @@ import { useState } from 'react';
 import { useSession } from '@/lib/SessionContext';
 import { base44 } from '@/api/base44Client';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { useToast } from '@/components/ui/use-toast';
 import { fmtDate } from '@/lib/format';
 import { STATUS_LABEL } from '@/components/payroll/PayrollSheet';
 
 export default function PayrollActions({ payroll: p, onChange }) {
-  const [by, setBy] = useState(p.reviewed_by || '');
   const [busy, setBusy] = useState(false);
   const { toast } = useToast();
   const { session } = useSession();
@@ -23,13 +21,14 @@ export default function PayrollActions({ payroll: p, onChange }) {
         action,
         token: session?.token,
         payroll_id: p.id,
-        ...(action === 'approve' ? { reviewer: by.trim() } : {}),
+        expected_company_id: session.company_id,
       });
       if (!response.data?.ok || !response.data?.payroll) throw new Error('resposta_invalida');
       onChange(response.data.payroll);
       toast({ title: msg });
-    } catch {
-      setError('Não foi possível alterar a situação da folha. Confirme os dados e tente novamente.');
+    } catch (e) {
+      const problems = (e.data || e.response?.data)?.problems;
+      setError(problems?.join(' ') || 'Não foi possível alterar a situação da folha. Confirme os dados e tente novamente.');
     } finally {
       setBusy(false);
     }
@@ -38,16 +37,16 @@ export default function PayrollActions({ payroll: p, onChange }) {
   return (
     <div className="flex flex-wrap items-center gap-3 border border-border bg-card px-4 py-3 print:hidden">
       <span className="text-sm">Situação: <strong>{STATUS_LABEL[p.status]}</strong></span>
-      {p.status === 'rascunho' && (
+      {session?.role !== 'gerente' && p.status === 'rascunho' && (
         <>
-          <Input className="max-w-xs" placeholder="Responsável pela conferência" value={by} onChange={(e) => setBy(e.target.value)} />
-          <Button disabled={busy || !by.trim() || inconsistent}
+          <span>Conferente: {session?.name}</span>
+          <Button disabled={busy || inconsistent}
             onClick={() => run('approve', 'Folha conferida e aprovada')}>
             Aprovar folha
           </Button>
         </>
       )}
-      {p.status === 'aprovada' && (
+      {session?.role !== 'gerente' && p.status === 'aprovada' && (
         <>
           <span className="text-sm text-muted-foreground">Conferida por {p.reviewed_by}</span>
           <Button disabled={busy} onClick={() => run('finalize', 'Folha finalizada')}>

@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { unscoped } from '@/api/base44Client';
+import { rh } from '@/api/rh';
+import { useSession } from '@/lib/SessionContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -16,6 +17,7 @@ export const EMPTY_TABLE = {
 };
 
 export default function LegalTableForm({ initial, onSaved, onCancel }) {
+  const {session} = useSession();
   const [f, setF] = useState({ ...EMPTY_TABLE, ...(initial || {}) });
   const [errors, setErrors] = useState([]);
   const [busy, setBusy] = useState(false);
@@ -32,7 +34,9 @@ export default function LegalTableForm({ initial, onSaved, onCancel }) {
     if ((f.inss_bands || []).some((b) => !(Number(b.limit) > 0) || !(Number(b.rate) > 0))) errs.push('Toda faixa de INSS precisa de limite e alíquota maiores que zero.');
     if ((f.irrf_bands || []).some((b) => !(Number(b.limit) > 0))) errs.push('Toda faixa de IRRF precisa de um limite maior que zero.');
     setErrors(errs);
-    if (errs.length) return;
+    if (initial?.id) {
+      if (f.end_competence && f.end_competence < f.start_competence) return;
+    } else if (errs.length) return;
 
     setBusy(true);
     const data = {
@@ -50,16 +54,20 @@ export default function LegalTableForm({ initial, onSaved, onCancel }) {
     delete data.created_date;
     delete data.updated_date;
     delete data.created_by_id;
-    const saved = initial?.id
-      ? await unscoped.entities.LegalTable.update(initial.id, data)
-      : await unscoped.entities.LegalTable.create(data);
-    toast({ title: 'Tabela legal salva', description: `${data.label} — vigência ${data.start_competence}` });
-    setBusy(false);
-    onSaved(saved);
+    try {
+      const saved = await rh(session,'saveLegalTable',{id:initial?.id,record:data});
+      toast({ title: 'Tabela legal salva' });
+      onSaved(saved.record);
+    } catch (e) { setErrors([e.message]); }
+    finally { setBusy(false); }
   };
 
   return (
     <div className="space-y-5 border border-border bg-card p-5">
+      {initial?.id ? <div className="space-y-3"><p>{initial.label} · Vigência inicial {initial.start_competence}</p>
+        <Field label="Vigência final"><Input type="month" value={f.end_competence} onChange={set('end_competence')} /></Field>
+        <label><Checkbox checked={f.active} onCheckedChange={active => setF({...f,active:active === true})} /> Tabela ativa</label>
+      </div> : <>
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Nome da tabela" className="sm:col-span-2"><Input value={f.label} onChange={set('label')} placeholder="Ex.: Tabela oficial 2026" /></Field>
         <Field label="Vigência inicial (competência)"><Input type="month" value={f.start_competence} onChange={set('start_competence')} /></Field>
@@ -80,6 +88,7 @@ export default function LegalTableForm({ initial, onSaved, onCancel }) {
         <Field label="Tolerância de marcação (min)"><Input type="number" className="font-mono" value={f.tolerance_minutes} onChange={set('tolerance_minutes')} /></Field>
       </div>
       <Field label="Fonte e observações"><Textarea rows={3} value={f.notes} onChange={set('notes')} placeholder="Origem dos valores (portaria, lei, orientação da contabilidade) e data da conferência." /></Field>
+      </>}
       {errors.length > 0 && <ul className="border border-destructive bg-red-50 px-3 py-2 text-sm text-destructive">{errors.map((e) => <li key={e}>• {e}</li>)}</ul>}
       <div className="flex gap-3">
         <Button onClick={save} disabled={busy}>{busy ? 'Salvando…' : 'Salvar tabela'}</Button>

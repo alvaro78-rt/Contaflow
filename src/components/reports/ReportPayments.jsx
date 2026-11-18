@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { base44 } from '@/api/base44Client';
+import { rh } from '@/api/rh';
+import { useSession } from '@/lib/SessionContext';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import Field from '@/components/Field';
@@ -15,33 +16,35 @@ export default function ReportPayments({ mode = 'payments' }) {
   const [from, setFrom] = useState(comp);
   const [to, setTo] = useState(comp);
   const [department, setDepartment] = useState('all');
-  const [departments, setDepartments] = useState([]);
-  const [rows, setRows] = useState([]);
-
+  const {session} = useSession();
+  const [periodRows,setPeriodRows] = useState([]);
+  const [error,setError] = useState('');
   useEffect(() => {
-    base44.entities.Payroll.filter({}, { sort: 'department', limit: 500 }).then((r) => {
-      setDepartments([...new Set(r.items.map((p) => p.department).filter(Boolean))]);
-    });
-  }, []);
-
-  useEffect(() => {
-    const query = {};
-    if (from && to) query.competence = { $gte: from, $lte: to };
-    else if (from) query.competence = { $gte: from };
-    else if (to) query.competence = { $lte: to };
-    if (department !== 'all') query.department = department;
-    base44.entities.Payroll.filter(query, { sort: 'employee_name', limit: 1000 }).then((r) => setRows(r.items));
-  }, [from, to, department]);
-
-  const sum = (key) => rows.reduce((a, b) => a + (b[key] || 0), 0);
-  const fgts = (p) => (p.informatives || []).find((i) => i.description.startsWith('FGTS'))?.value || 0;
-
+    let current = true;
+    setPeriodRows([]); setError('');
+    (async () => {
+      const items = [];
+      let cursor;
+      do {
+        const page = await rh(session,'history',{from,to,cursor});
+        items.push(...page.items); cursor = page.next_cursor;
+      } while (cursor && current);
+      if (current) setPeriodRows(items);
+    })().catch(e => {if (current) setError(e.message);});
+    return () => {current=false;};
+  },[from,to,session]);
+  const departments = [...new Set(periodRows.map(p => p.department).filter(Boolean))];
+  const rows = periodRows.filter(p => department === 'all' || p.department === department);
+  const sum = key => rows.reduce((a,b) => a+b[key],0);
+  const fgts = p => p.informatives?.find(i => i.description?.startsWith('FGTS'))?.value;
+  const complete = rows.every(p => [p.base_salary,p.total_earnings,p.total_deductions,p.net_salary,
+    ...(mode === 'fgts' ? [fgts(p),p.calc_memory?.fgts_base] : [])].every(Number.isFinite));
   const exportCsv = () => {
     const headers = mode === 'fgts'
       ? ['Competência', 'Funcionário', 'CPF', 'Base', 'FGTS']
       : ['Competência', 'Funcionário', 'CPF', 'Salário-base', 'Proventos', 'Descontos', 'Líquido'];
     const data = rows.map((p) => (mode === 'fgts'
-      ? [competenceLabel(p.competence), p.employee_name, formatCpf(p.employee_cpf), num(p.total_earnings), num(fgts(p))]
+      ? [competenceLabel(p.competence), p.employee_name, formatCpf(p.employee_cpf), num(p.calc_memory.fgts_base), num(fgts(p))]
       : [competenceLabel(p.competence), p.employee_name, formatCpf(p.employee_cpf), num(p.base_salary), num(p.total_earnings), num(p.total_deductions), num(p.net_salary)]));
     downloadCsv(`folha-${mode}-${from || 'inicio'}-${to || 'fim'}.csv`, headers, data);
   };
@@ -56,12 +59,13 @@ export default function ReportPayments({ mode = 'payments' }) {
         <Field label="Departamento">
           <Choice value={department} onChange={setDepartment} options={[['all', 'Todos os departamentos'], ...departments.map((d) => [d, d])]} />
         </Field>
-        <Button variant="outline" onClick={exportCsv} disabled={rows.length === 0}>Exportar CSV</Button>
+        <Button variant="outline" onClick={exportCsv} disabled={!complete || rows.length === 0}>Exportar CSV</Button>
       </div>
 
       <p className="font-mono text-xs text-muted-foreground print:hidden">Período: {period} · {rows.length} folha(s)</p>
 
-      {rows.length === 0 ? <Empty>Nenhuma folha registrada para este filtro.</Empty> : (
+      {error && <p role="alert">{error}</p>}
+      {!complete ? <p role="alert">Há valores sem memória de cálculo neste filtro. Confira os registros individuais em Folhas anteriores.</p> : rows.length === 0 ? <Empty>Nenhuma folha registrada para este filtro.</Empty> : (
         <>
           {mode === 'summary' && (
             <div className="grid gap-px border border-border bg-border sm:grid-cols-4">
@@ -92,7 +96,7 @@ export default function ReportPayments({ mode = 'payments' }) {
                     <td className="px-4 py-2">{p.employee_name}</td>
                     <td className="px-4 py-2 font-mono text-xs">{formatCpf(p.employee_cpf)}</td>
                     <td className="px-4 py-2 text-xs text-muted-foreground">{p.department || '—'}</td>
-                    {mode === 'fgts' ? <><td className="px-4 py-2 text-right font-mono">{money(p.total_earnings)}</td><td className="px-4 py-2 text-right font-mono">{money(fgts(p))}</td></> : <>
+                    {mode === 'fgts' ? <><td className="px-4 py-2 text-right font-mono">{money(p.calc_memory.fgts_base)}</td><td className="px-4 py-2 text-right font-mono">{money(fgts(p))}</td></> : <>
                       <td className="px-4 py-2 text-right font-mono">{money(p.base_salary)}</td>
                       <td className="px-4 py-2 text-right font-mono">{money(p.total_earnings)}</td>
                       <td className="px-4 py-2 text-right font-mono">{money(p.total_deductions)}</td>
