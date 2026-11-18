@@ -24,6 +24,20 @@ export default async function (req) {
       });
     }
 
+    if (body.action === 'assignPosition') {
+      const employee = await scopedRecord(entities.Employee, body.employee_id, companyId);
+      const position = await scopedRecord(entities.Position, body.position_id, companyId);
+      if (!employee) return fail(404, 'funcionario_inexistente');
+      if (!position) return fail(404, 'cargo_invalido');
+      if (employee.access_role === 'master' || employee.status === 'desligado') return fail(403, 'perfil_protegido');
+      if (employee.position_id !== position.id) {
+        await entities.Employee.update(employee.id, { position_id: position.id });
+      }
+      const updated = await scopedRecord(entities.Employee, employee.id, companyId);
+      if (updated?.position_id !== position.id) return fail(409, 'vinculo_nao_confirmado');
+      return ok({ employee_id: employee.id, position_id: position.id });
+    }
+
     if (body.action !== 'savePosition' && body.action !== 'saveSchedule') return fail(400, 'acao_invalida');
     const input = body.record;
     const name = typeof input?.name === 'string' ? input.name.trim() : '';
