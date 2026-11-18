@@ -32,7 +32,7 @@ export default async function (req) {
     const { Company, Employee } = base44.asServiceRole.entities;
     const items = await allRows(Company, { status: { $ne: 'inativa' } }, 'name');
     // Protege a lista mesmo se o filtro $ne do provedor não for aplicado.
-    const visible = items.filter(c => c.status !== 'inativa');
+    const visible = body?.include_inactive === true ? await allRows(Company, {}, 'name') : items.filter(c => c.status !== 'inativa');
     const ids = visible.map(c => c.id);
     const owners = ids.length ? await allRows(Employee, { company_id: { $in: ids }, access_role: 'admin' }, 'id') : [];
     return Response.json({
