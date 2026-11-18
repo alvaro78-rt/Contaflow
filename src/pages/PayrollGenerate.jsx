@@ -51,6 +51,7 @@ export default function PayrollGenerate() {
           competencia_anterior_admissao: 'A competência selecionada é anterior à admissão do funcionário.',
           funcionario_desligado: 'O funcionário está desligado. Não é possível gerar esta folha por este fluxo.',
           tabela_legal_incompleta: 'A tabela legal vigente está incompleta. Confira as faixas de INSS e IRRF.',
+          ponto_nao_conferido: 'Não há registros de ponto nesta competência. Confira o período antes de calcular faltas e remuneração.',
           limite_consulta: 'Há muitos registros para esta consulta. A folha não foi calculada para evitar dados incompletos.',
           salvamento_nao_confirmado: 'O servidor não confirmou o salvamento. Confira o histórico antes de tentar novamente.',
         };
