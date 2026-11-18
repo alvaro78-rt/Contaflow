@@ -79,7 +79,7 @@ export default async function (req) {
         }
         return fail(409, 'cpf_ja_tem_acesso');
       }
-      const password_hash = newPasswordHash(password);
+      const password_hash = await newPasswordHash(password);
       const employee = target
         ? await Employee.update(target.id, { password_hash })
         : await createChecked(Employee, { ...data, cpf, company_id: companyId, access_role: 'funcionario', status: 'ativo', password_hash });
@@ -113,7 +113,7 @@ export default async function (req) {
       const duplicates = await Employee.filter({ company_id: companyId, username: data.username }, 'id', 2);
       if (duplicates.some((e) => e.id !== existing?.id)) return fail(409, 'usuario_duplicado');
     }
-    if (password) data.password_hash = newPasswordHash(password);
+    if (password) data.password_hash = await newPasswordHash(password);
 
     // O vínculo é derivado da sessão. A edição preserva os campos de acesso omitidos.
     const fields = { ...data, cpf, access_role: role, status };
