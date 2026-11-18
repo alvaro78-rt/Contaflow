@@ -7,7 +7,8 @@ const client = createClient({
   appId,
   token,
   functionsVersion,
-  serverUrl: '',
+  // Em hospedagem externa, as chamadas precisam chegar ao backend Base44.
+  serverUrl: appBaseUrl || 'https://app.base44.com',
   appBaseUrl
 });
 
