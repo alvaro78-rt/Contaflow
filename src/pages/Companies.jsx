@@ -35,7 +35,8 @@ export default function Companies() {
       if (current !== request.current) return;
       const data = res.data;
       if (!data?.ok) throw new Error(data?.error || 'falha');
-      setCompanies(data.companies || []);
+      // A resposta pode vir de uma versão antiga do backend; não reexibir empresas inativas.
+      setCompanies((data.companies || []).filter((company) => company.status !== 'inativa'));
     } catch (err) {
       if (current !== request.current) return;
       const code = err?.data?.error ?? err?.response?.data?.error;
