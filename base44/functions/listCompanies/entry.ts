@@ -31,11 +31,13 @@ export default async function (req) {
     if (actor.access_role !== 'master') return Response.json({ error: 'somente_mestre' }, { status: 403 });
     const { Company, Employee } = base44.asServiceRole.entities;
     const items = await allRows(Company, { status: { $ne: 'inativa' } }, 'name');
-    const ids = items.map(c => c.id);
+    // Protege a lista mesmo se o filtro $ne do provedor não for aplicado.
+    const visible = items.filter(c => c.status !== 'inativa');
+    const ids = visible.map(c => c.id);
     const owners = ids.length ? await allRows(Employee, { company_id: { $in: ids }, access_role: 'admin' }, 'id') : [];
     return Response.json({
       ok: true,
-      companies: items.map((c) => ({
+      companies: visible.map((c) => ({
         id: c.id,
         name: c.name || '',
         owner_name: c.owner_name || '',
