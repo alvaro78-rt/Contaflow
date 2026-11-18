@@ -1,0 +1,51 @@
+{
+  "name": "Rubric",
+  "type": "object",
+  "rls": {
+    "read": false,
+    "create": {
+      "user_condition": {
+        "email": "deny-all@invalid.invalid"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "email": "deny-all@invalid.invalid"
+      }
+    },
+    "delete": false
+  },
+  "properties": {
+    "company_id": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string"
+    },
+    "category": {
+      "type": "string",
+      "enum": [
+        "provento",
+        "desconto",
+        "informativa",
+        "redutora"
+      ]
+    },
+    "description": {
+      "type": "string"
+    },
+    "fixed_value": {
+      "type": "number",
+      "description": "Valor fixo opcional"
+    },
+    "auto_apply": {
+      "type": "boolean",
+      "default": false,
+      "description": "Aplicar valor fixo automaticamente em toda folha"
+    }
+  },
+  "required": [
+    "name",
+    "category"
+  ]
+}

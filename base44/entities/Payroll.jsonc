@@ -1,0 +1,174 @@
+{
+  "name": "Payroll",
+  "type": "object",
+  "rls": {
+    "read": false,
+    "create": {
+      "user_condition": {
+        "email": "deny-all@invalid.invalid"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "email": "deny-all@invalid.invalid"
+      }
+    },
+    "delete": false
+  },
+  "properties": {
+    "company_id": {
+      "type": "string"
+    },
+    "employee_id": {
+      "type": "string"
+    },
+    "employee_name": {
+      "type": "string"
+    },
+    "employee_cpf": {
+      "type": "string"
+    },
+    "position_name": {
+      "type": "string"
+    },
+    "department": {
+      "type": "string"
+    },
+    "competence": {
+      "type": "string",
+      "description": "AAAA-MM"
+    },
+    "base_salary": {
+      "type": "number"
+    },
+    "earnings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "value": {
+            "type": "number"
+          }
+        }
+      }
+    },
+    "deductions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "value": {
+            "type": "number"
+          }
+        }
+      }
+    },
+    "informatives": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "value": {
+            "type": "number"
+          }
+        }
+      }
+    },
+    "total_earnings": {
+      "type": "number"
+    },
+    "total_deductions": {
+      "type": "number"
+    },
+    "net_salary": {
+      "type": "number"
+    },
+    "calc_memory": {
+      "type": "object",
+      "description": "Mem\u00f3ria de c\u00e1lculo: bases e al\u00edquotas aplicadas",
+      "properties": {
+        "inss_base": {
+          "type": "number"
+        },
+        "irrf_base": {
+          "type": "number"
+        },
+        "irrf_dependents": {
+          "type": "number"
+        },
+        "fgts_base": {
+          "type": "number"
+        },
+        "fgts_rate": {
+          "type": "number"
+        },
+        "hourly_rate": {
+          "type": "number"
+        },
+        "overtime_rate": {
+          "type": "number"
+        }
+      }
+    },
+    "legal_table_id": {
+      "type": "string"
+    },
+    "legal_table_label": {
+      "type": "string",
+      "description": "Tabela legal aplicada no c\u00e1lculo"
+    },
+    "time_summary": {
+      "type": "object",
+      "properties": {
+        "worked": {
+          "type": "number"
+        },
+        "late": {
+          "type": "number"
+        },
+        "overtime": {
+          "type": "number"
+        },
+        "absences": {
+          "type": "number"
+        }
+      }
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "rascunho",
+        "aprovada",
+        "finalizada"
+      ],
+      "enumColors": [
+        "yellow",
+        "blue",
+        "green"
+      ],
+      "default": "rascunho"
+    },
+    "reviewed_by": {
+      "type": "string"
+    },
+    "reviewed_at": {
+      "type": "string"
+    },
+    "finalized_at": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "employee_id",
+    "competence"
+  ]
+}

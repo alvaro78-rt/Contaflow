@@ -1,0 +1,75 @@
+{
+  "name": "TimeRecord",
+  "type": "object",
+  "rls": {
+    "read": false,
+    "create": {
+      "user_condition": {
+        "email": "deny-all@invalid.invalid"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "email": "deny-all@invalid.invalid"
+      }
+    },
+    "delete": false
+  },
+  "properties": {
+    "company_id": {
+      "type": "string"
+    },
+    "employee_id": {
+      "type": "string"
+    },
+    "date": {
+      "type": "string",
+      "format": "date"
+    },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "entry",
+        "break_start",
+        "break_end",
+        "exit"
+      ]
+    },
+    "original_time": {
+      "type": "string",
+      "description": "Marca\u00e7\u00e3o original do leitor, nunca alterada"
+    },
+    "corrected_time": {
+      "type": "string"
+    },
+    "justification": {
+      "type": "string"
+    },
+    "corrections": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "previous": {
+            "type": "string"
+          },
+          "time": {
+            "type": "string"
+          },
+          "justification": {
+            "type": "string"
+          },
+          "at": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "required": [
+    "employee_id",
+    "date",
+    "kind",
+    "original_time"
+  ]
+}

@@ -1,0 +1,55 @@
+{
+  "name": "WorkSchedule",
+  "type": "object",
+  "rls": {
+    "read": false,
+    "create": {
+      "user_condition": {
+        "email": "deny-all@invalid.invalid"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "email": "deny-all@invalid.invalid"
+      }
+    },
+    "delete": false
+  },
+  "properties": {
+    "company_id": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string"
+    },
+    "weekly_hours": {
+      "type": "number"
+    },
+    "work_days": {
+      "type": "array",
+      "items": {
+        "type": "number"
+      },
+      "description": "0=domingo ... 6=s\u00e1bado"
+    },
+    "entry_time": {
+      "type": "string"
+    },
+    "exit_time": {
+      "type": "string"
+    },
+    "break_start": {
+      "type": "string"
+    },
+    "break_end": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "name",
+    "weekly_hours",
+    "work_days",
+    "entry_time",
+    "exit_time"
+  ]
+}

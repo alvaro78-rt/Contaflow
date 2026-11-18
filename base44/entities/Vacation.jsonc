@@ -1,0 +1,183 @@
+{
+  "name": "Vacation",
+  "type": "object",
+  "rls": {
+    "read": false,
+    "create": {
+      "user_condition": {
+        "email": "deny-all@invalid.invalid"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "email": "deny-all@invalid.invalid"
+      }
+    },
+    "delete": false
+  },
+  "properties": {
+    "company_id": {
+      "type": "string"
+    },
+    "employee_id": {
+      "type": "string"
+    },
+    "employee_name": {
+      "type": "string"
+    },
+    "employee_cpf": {
+      "type": "string"
+    },
+    "position_name": {
+      "type": "string"
+    },
+    "department": {
+      "type": "string"
+    },
+    "competence": {
+      "type": "string",
+      "description": "AAAA-MM do in\u00edcio do gozo"
+    },
+    "acquired_start": {
+      "type": "string",
+      "format": "date",
+      "description": "In\u00edcio do per\u00edodo aquisitivo"
+    },
+    "acquired_end": {
+      "type": "string",
+      "format": "date",
+      "description": "Fim do per\u00edodo aquisitivo"
+    },
+    "concessive_end": {
+      "type": "string",
+      "format": "date",
+      "description": "Limite do per\u00edodo concessivo (aquisitivo + 12 meses)"
+    },
+    "start_date": {
+      "type": "string",
+      "format": "date",
+      "description": "In\u00edcio do gozo"
+    },
+    "end_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Fim do gozo"
+    },
+    "days": {
+      "type": "number",
+      "description": "Dias de gozo"
+    },
+    "abono_days": {
+      "type": "number",
+      "description": "Dias vendidos (abono pecuni\u00e1rio, at\u00e9 10)"
+    },
+    "expired": {
+      "type": "boolean",
+      "description": "Per\u00edodo aquisitivo vencido \u2014 pagamento em dobro (art. 137)"
+    },
+    "base_salary": {
+      "type": "number"
+    },
+    "earnings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "value": {
+            "type": "number"
+          }
+        }
+      }
+    },
+    "deductions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "value": {
+            "type": "number"
+          }
+        }
+      }
+    },
+    "informatives": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "value": {
+            "type": "number"
+          }
+        }
+      }
+    },
+    "total_earnings": {
+      "type": "number"
+    },
+    "total_deductions": {
+      "type": "number"
+    },
+    "net_salary": {
+      "type": "number"
+    },
+    "calc_memory": {
+      "type": "object",
+      "properties": {
+        "daily": {
+          "type": "number"
+        },
+        "taxable_base": {
+          "type": "number"
+        },
+        "irrf_base": {
+          "type": "number"
+        },
+        "abono_value": {
+          "type": "number"
+        },
+        "fgts_rate": {
+          "type": "number"
+        },
+        "fgts_value": {
+          "type": "number"
+        },
+        "dependents": {
+          "type": "number"
+        }
+      }
+    },
+    "legal_table_label": {
+      "type": "string",
+      "description": "Tabela legal aplicada no c\u00e1lculo"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "programada",
+        "paga"
+      ],
+      "enumColors": [
+        "yellow",
+        "green"
+      ],
+      "default": "programada"
+    },
+    "paid_at": {
+      "type": "string",
+      "description": "Data do pagamento"
+    }
+  },
+  "required": [
+    "employee_id",
+    "start_date"
+  ]
+}

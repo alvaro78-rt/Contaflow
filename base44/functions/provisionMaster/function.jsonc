@@ -1,0 +1,4 @@
+{
+  "name": "provisionMaster",
+  "entry": "entry.ts"
+}

@@ -1,0 +1,161 @@
+{
+  "name": "ThirteenthSalary",
+  "type": "object",
+  "rls": {
+    "read": false,
+    "create": {
+      "user_condition": {
+        "email": "deny-all@invalid.invalid"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "email": "deny-all@invalid.invalid"
+      }
+    },
+    "delete": false
+  },
+  "properties": {
+    "company_id": {
+      "type": "string"
+    },
+    "employee_id": {
+      "type": "string"
+    },
+    "employee_name": {
+      "type": "string"
+    },
+    "employee_cpf": {
+      "type": "string"
+    },
+    "position_name": {
+      "type": "string"
+    },
+    "department": {
+      "type": "string"
+    },
+    "year": {
+      "type": "string",
+      "description": "Ano de refer\u00eancia do 13\u00ba"
+    },
+    "competence": {
+      "type": "string",
+      "description": "AAAA-12 (compet\u00eancia do 13\u00ba)"
+    },
+    "months_worked": {
+      "type": "number",
+      "description": "Avos de direito (meses com 15 dias ou mais)"
+    },
+    "base_salary": {
+      "type": "number"
+    },
+    "gross": {
+      "type": "number",
+      "description": "13\u00ba bruto proporcional"
+    },
+    "first_parcel": {
+      "type": "number",
+      "description": "1\u00aa parcela (50%, sem descontos)"
+    },
+    "second_parcel": {
+      "type": "number",
+      "description": "2\u00aa parcela (50% menos INSS e IRRF)"
+    },
+    "inss": {
+      "type": "number"
+    },
+    "irrf": {
+      "type": "number"
+    },
+    "earnings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "value": {
+            "type": "number"
+          }
+        }
+      }
+    },
+    "deductions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "value": {
+            "type": "number"
+          }
+        }
+      }
+    },
+    "informatives": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "value": {
+            "type": "number"
+          }
+        }
+      }
+    },
+    "total_earnings": {
+      "type": "number"
+    },
+    "total_deductions": {
+      "type": "number"
+    },
+    "net_salary": {
+      "type": "number"
+    },
+    "calc_memory": {
+      "type": "object",
+      "properties": {
+        "irrf_base": {
+          "type": "number"
+        },
+        "fgts_rate": {
+          "type": "number"
+        },
+        "fgts_value": {
+          "type": "number"
+        },
+        "dependents": {
+          "type": "number"
+        }
+      }
+    },
+    "legal_table_label": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "a_pagar",
+        "paga"
+      ],
+      "enumColors": [
+        "yellow",
+        "green"
+      ],
+      "default": "a_pagar"
+    },
+    "paid_at": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "employee_id",
+    "year"
+  ]
+}

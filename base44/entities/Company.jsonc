@@ -1,0 +1,47 @@
+{
+  "name": "Company",
+  "type": "object",
+  "rls": {
+    "read": false,
+    "create": {
+      "user_condition": {
+        "email": "deny-all@invalid.invalid"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "email": "deny-all@invalid.invalid"
+      }
+    },
+    "delete": false
+  },
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Nome do sistema/empresa do cliente"
+    },
+    "document": {
+      "type": "string",
+      "description": "CNPJ ou CPF do titular"
+    },
+    "owner_name": {
+      "type": "string",
+      "description": "Nome do dono da empresa"
+    },
+    "owner_cpf": {
+      "type": "string",
+      "description": "CPF do dono, somente d\u00edgitos"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "ativa",
+        "inativa"
+      ],
+      "default": "ativa"
+    }
+  },
+  "required": [
+    "name"
+  ]
+}
