@@ -22,37 +22,59 @@ export default function PayrollGenerate() {
   const { toast } = useToast();
 
   const process = async () => {
-    setLoading(true); setMessage(''); setProblems([]);
-    const [pos, sched, recs, rubrics, existing, table] = await Promise.all([
-      emp.position_id ? base44.entities.Position.get(emp.position_id) : null,
-      emp.schedule_id ? base44.entities.WorkSchedule.get(emp.schedule_id) : null,
-      base44.entities.TimeRecord.filter({ employee_id: emp.id, date: { $gte: `${comp}-01`, $lte: `${comp}-31` } }, { limit: 500 }),
-      base44.entities.Rubric.filter({ auto_apply: true }, { limit: 100 }),
-      base44.entities.Payroll.filter({ employee_id: emp.id, competence: comp }, { limit: 1 }),
-      loadLegalTable(comp),
-    ]);
+    if (!emp || !comp || loading) return;
+    setLoading(true);
+    setMessage('');
+    setProblems([]);
+    setPayroll(null);
+    try {
+      const [pos, sched, recs, rubrics, existing, table] = await Promise.all([
+        emp.position_id ? base44.entities.Position.get(emp.position_id) : null,
+        emp.schedule_id ? base44.entities.WorkSchedule.get(emp.schedule_id) : null,
+        base44.entities.TimeRecord.filter({ employee_id: emp.id, date: { $gte: `${comp}-01`, $lte: `${comp}-31` } }, { limit: 500 }),
+        base44.entities.Rubric.filter({ auto_apply: true }, { limit: 100 }),
+        base44.entities.Payroll.filter({ employee_id: emp.id, competence: comp }, { limit: 1 }),
+        loadLegalTable(comp),
+      ]);
 
-    const blocked = validatePayrollInput({ employee: emp, schedule: sched, table });
-    if (blocked.length) {
-      setProblems(blocked);
-      setPayroll(null);
+      const blocked = validatePayrollInput({ employee: emp, schedule: sched, table });
+      if (blocked.length) {
+        setProblems(blocked);
+        return;
+      }
+
+      if (!recs?.items || !rubrics?.items || !existing?.items) {
+        throw new Error('dados_incompletos');
+      }
+      const old = existing.items[0];
+      if (old?.status === 'finalizada') {
+        setPayroll(old);
+        setMessage('Esta folha já foi finalizada e não pode ser recalculada. Exibindo o resultado registrado.');
+        return;
+      }
+
+      const stats = monthStats(recs.items, sched, comp, paramsFromTable(table));
+      const data = buildPayroll({ employee: emp, positionName: pos?.name, competence: comp, stats, rubrics: rubrics.items, table });
+      const saved = old ? await base44.entities.Payroll.update(old.id, data) : await base44.entities.Payroll.create(data);
+      if (!saved?.id && !old?.id) throw new Error('salvamento_nao_confirmado');
+      setPayroll({ ...data, id: saved?.id || old.id });
+      toast({ title: 'Folha calculada e salva para conferência', description: `Tabela legal aplicada: ${table.label}` });
+    } catch (error) {
+      const status = error?.response?.status ?? error?.status;
+      const code = error?.response?.data?.error ?? error?.data?.error;
+      const detail = status === 401 || status === 403
+        ? 'A consulta foi recusada pelo servidor. Verifique as permissões do módulo Folha de pagamento.'
+        : status === 404
+          ? 'Uma das rotas ou funções necessárias à folha não foi encontrada no servidor.'
+          : code === 'dados_incompletos' || error?.message === 'dados_incompletos'
+            ? 'O servidor não retornou todos os dados necessários para calcular a folha.'
+            : error?.message === 'salvamento_nao_confirmado'
+              ? 'O servidor não confirmou o salvamento. Consulte as folhas existentes antes de tentar novamente.'
+              : 'Não foi possível processar a folha. Verifique a conexão e as consultas do módulo no servidor.';
+      setProblems([detail]);
+    } finally {
       setLoading(false);
-      return;
     }
-
-    const old = existing.items[0];
-    if (old?.status === 'finalizada') {
-      setPayroll(old);
-      setMessage('Esta folha já foi finalizada e não pode ser recalculada. Exibindo o resultado registrado.');
-      return setLoading(false);
-    }
-
-    const stats = monthStats(recs.items, sched, comp, paramsFromTable(table));
-    const data = buildPayroll({ employee: emp, positionName: pos?.name, competence: comp, stats, rubrics: rubrics.items, table });
-    const saved = old ? { ...data, id: old.id, ...(await base44.entities.Payroll.update(old.id, data)) } : await base44.entities.Payroll.create(data);
-    setPayroll({ ...data, id: saved.id });
-    toast({ title: 'Folha calculada e salva para conferência', description: `Tabela legal aplicada: ${table.label}` });
-    setLoading(false);
   };
 
   return (
