@@ -2,7 +2,7 @@
 
 Use this repository to run and edit the app locally, then publish changes back through Base44.
 
-Any change pushed to the repo will also be reflected in the Base44 Builder.
+Builder synchronization depends on the GitHub integration configured for the app.
 
 ## Prerequisites
 
@@ -45,13 +45,9 @@ base44 dev --remote
 
 ## Publish Your Changes
 
-After pushing your changes to git, open the Base44 dashboard and publish the app:
+Para publicar esta cópia no ContaFlow original pelo Windows, extraia o ZIP inteiro e execute `Publicar-ContaFlow.cmd`. O script usa a conta já conectada pelo comando `npx --yes base44 login`, instala as dependências, atualiza as funções do cadastro e publica o site compilado no app `contabilidade-1.base44.app`.
 
-```bash
-base44 dashboard open
-```
-
-This repo syncs to Base44 through git, so publish from the dashboard rather than `base44 deploy` — a CLI deploy ships your local tree directly, bypassing the sync, and the deployed state silently diverges from the repo.
+Se você publica pelo editor Base44, confira antes se o código aberto nele corresponde ao commit desejado. O botão Publicar do editor usa a versão que estiver nele.
 
 ## Docs & Support
 

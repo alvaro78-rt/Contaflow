@@ -10,6 +10,7 @@ const MESSAGES = {
   usuario_duplicado: 'Este nome de usuário já está em uso.',
   sem_permissao: 'Seu perfil não pode fazer esta operação nesta empresa.',
   perfil_protegido: 'Seu perfil não permite esta alteração de acesso.',
+  empresa_alterada: 'A empresa aberta mudou. Volte ao painel e selecione a empresa novamente.',
   sem_empresa: 'Nenhuma empresa está aberta na sua sessão.',
   sessao_expirada: 'Sessão expirada. Entre novamente.',
   sessao_invalida: 'Sessão inválida. Entre novamente.',

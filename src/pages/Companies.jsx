@@ -31,9 +31,9 @@ export default function Companies() {
       if (!data?.ok) throw new Error(data?.error || 'falha');
       setCompanies(data.companies || []);
     } catch (err) {
-      const code = err?.response?.data?.error || '';
+      const code = err?.data?.error ?? err?.response?.data?.error;
       if (EXPIRED.includes(code) || !session?.token) {
-        logout();
+        logout('expired');
         navigate('/login?expired=1', { replace: true });
         return;
       }
@@ -58,9 +58,9 @@ export default function Companies() {
       login({ ...session, company_id: res.data.company.id, company_name: res.data.company.name });
       navigate('/', { replace: true });
     } catch (err) {
-      const code = err?.response?.data?.error || '';
+      const code = err?.data?.error ?? err?.response?.data?.error;
       if (EXPIRED.includes(code)) {
-        logout();
+        logout('expired');
         navigate('/login?expired=1', { replace: true });
         return;
       }

@@ -10,7 +10,7 @@ import PageHeader from '@/components/PageHeader';
 import Field from '@/components/Field';
 import FormSection from '@/components/employees/FormSection';
 import DependentsEditor from '@/components/employees/DependentsEditor';
-import { employeeCatalog, employeeError, getEmployee, saveEmployee } from '@/api/employeeAdmin';
+import { employeeCatalog, employeeError, getEmployee, saveEmployee, SESSION_ERRORS } from '@/api/employeeAdmin';
 import { useSession } from '@/lib/SessionContext';
 import { formatCpf, formatPis, onlyDigits } from '@/lib/format';
 import { cpfMessage, isValidCpf } from '@/lib/cpf';
@@ -28,7 +28,7 @@ function Pick({ value, onChange, options, placeholder }) {
 
 export default function EmployeeForm() {
   const { id } = useParams();
-  const { session } = useSession();
+  const { session, logout } = useSession();
   const token = session?.token;
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -56,11 +56,17 @@ export default function EmployeeForm() {
         setReady(true);
       })
       .catch((error) => {
-        if (active) setErrors([employeeError(error, 'Não foi possível carregar o cadastro. Atualize a página para tentar novamente.')]);
+        if (!active) return;
+        if (SESSION_ERRORS.includes(error.code)) {
+          logout('expired');
+          navigate('/login?expired=1', { replace: true });
+          return;
+        }
+        setErrors([employeeError(error, 'Não foi possível carregar o cadastro. Atualize a página para tentar novamente.')]);
       })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [id, token]);
+  }, [id, token, logout, navigate]);
 
   const set = (k) => (e) => setF({ ...f, [k]: e.target ? e.target.value : e });
   const pickSchedule = (sid) => {
@@ -96,10 +102,15 @@ export default function EmployeeForm() {
     setBusy(true);
     try {
       const employee = { ...f, cpf: onlyDigits(f.cpf), pis: onlyDigits(f.pis), base_salary: Number(f.base_salary), weekly_hours: f.weekly_hours === '' ? undefined : Number(f.weekly_hours) };
-      await saveEmployee(token, { action: 'save', id, employee, password });
+      await saveEmployee(token, { action: 'save', expected_company_id: session.company_id, id, employee, password });
       toast({ title: id ? 'Cadastro atualizado' : 'Cadastro do funcionário realizado' });
       navigate('/funcionarios');
     } catch (error) {
+      if (SESSION_ERRORS.includes(error.code)) {
+        logout('expired');
+        navigate('/login?expired=1', { replace: true });
+        return;
+      }
       setErrors([employeeError(error, 'Não foi possível salvar o cadastro do funcionário.')]);
     } finally {
       setBusy(false);

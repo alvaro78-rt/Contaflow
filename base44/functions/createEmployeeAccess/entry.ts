@@ -32,6 +32,8 @@ export default async function (req) {
     const { actor, companyId, entities } = admin;
     const { Employee } = entities;
     const action = body.action ?? 'quick';
+    if (body.expected_company_id && body.expected_company_id !== companyId) return fail(409, 'empresa_alterada');
+    if (action === 'check') return ok({});
     if (!['quick', 'save', 'delete'].includes(action)) return fail(400, 'acao_invalida');
     const existing = body.id === undefined ? null : await scopedRecord(Employee, body.id, companyId);
     if ((body.id !== undefined || action === 'delete') && !existing) return fail(404, 'funcionario_inexistente');

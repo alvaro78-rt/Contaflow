@@ -69,18 +69,20 @@ export default async function (req) {
       }
 
       const token = issueToken();
+      const expiresAt = new Date(Date.now() + 12 * 60 * 60 * 1000).toISOString();
       await base44.asServiceRole.entities.AuthSession.deleteMany({ employee_id: emp.id });
       await base44.asServiceRole.entities.AuthSession.create({
         token,
         employee_id: emp.id,
         role: emp.access_role || 'funcionario',
-        expires_at: new Date(Date.now() + 12 * 60 * 60 * 1000).toISOString(),
+        expires_at: expiresAt,
       });
 
       // Nunca devolve hash de senha.
       return Response.json({
         ok: true,
         token,
+        expires_at: expiresAt,
         employee: {
           id: emp.id,
           full_name: emp.full_name,

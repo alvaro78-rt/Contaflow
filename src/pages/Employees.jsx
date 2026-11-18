@@ -26,7 +26,7 @@ export default function Employees() {
     } catch (err) {
       const code = err?.response?.data?.error || '';
       if (SESSION_ERRORS.includes(code)) {
-        logout();
+        logout('expired');
         navigate('/login?expired=1', { replace: true });
         return;
       }

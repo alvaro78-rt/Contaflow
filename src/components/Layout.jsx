@@ -18,7 +18,7 @@ export default function Layout() {
     } catch {
       // Sem sessão válida, o login resolve; a navegação acontece de qualquer forma.
     }
-    login({ id: session.id, name: session.name, role: 'master', master: true, token: session.token });
+    login({ ...session, company_id: '', company_name: '' });
     navigate('/empresas');
   };
 

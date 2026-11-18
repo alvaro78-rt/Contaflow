@@ -8,6 +8,15 @@ import { useSession } from '@/lib/SessionContext';
 import { useServices } from '@/lib/ServicesContext';
 import { formatCpf, onlyDigits } from '@/lib/format';
 
+const LOGIN_ERRORS = {
+  credenciais: 'CPF ou senha inválidos.',
+  credenciais_incompletas: 'Informe o CPF e a senha.',
+  cpf_invalido: 'CPF inválido. Confira os 11 dígitos.',
+  sem_acesso: 'Este CPF está cadastrado, mas ainda precisa de uma senha de acesso. Fale com o responsável pela empresa.',
+  cpf_duplicado: 'Há mais de uma conta com este CPF. Peça ao responsável pela empresa para conferir o cadastro.',
+  conta_desligada: 'Este acesso está desligado. Fale com o responsável pela empresa.',
+};
+
 // afterLogin permite reaproveitar esta tela na demonstração, sem sair da rota.
 export default function PortalLogin({ afterLogin }) {
   const services = useServices();
@@ -38,13 +47,15 @@ export default function PortalLogin({ afterLogin }) {
     try {
       const res = await services.invoke('authCpf', { action: 'login', cpf, password: form.password });
       const emp = res.data?.employee;
-      if (!emp) {
-        setError('CPF ou senha inválidos.');
+      const token = res.data?.token;
+      const expires_at = res.data?.expires_at;
+      if (!emp?.id || typeof token !== 'string' || !token.trim() || (emp.access_role !== 'master' && !emp.company_id)) {
+        setError('O servidor não confirmou a sessão. Entre novamente.');
         setBusy(false);
         return;
       }
       if (emp.access_role === 'master') {
-        login({ id: emp.id, name: emp.full_name, role: 'master', master: true, token: res.data?.token });
+        login({ id: emp.id, name: emp.full_name, role: 'master', master: true, token, expires_at });
         if (afterLogin) { afterLogin(emp); return; }
         navigate('/empresas', { replace: true });
         return;
@@ -56,17 +67,13 @@ export default function PortalLogin({ afterLogin }) {
         username: emp.username,
         company_id: emp.company_id,
         company_name: emp.company_name,
-        token: res.data?.token,
+        token, expires_at,
       });
       if (afterLogin) { afterLogin(emp); return; }
       navigate('/', { replace: true });
     } catch (err) {
-      const code = err?.response?.data?.error;
-      setError(code === 'sem_acesso'
-        ? 'Este CPF está na base, mas ainda não tem acesso criado. Fale com o administrador da empresa.'
-        : code === 'conta_desligada'
-          ? 'Este acesso está desligado. Fale com o administrador da empresa.'
-          : 'CPF ou senha inválidos.');
+      const code = err?.data?.error ?? err?.response?.data?.error;
+      setError(Object.hasOwn(LOGIN_ERRORS, code) ? LOGIN_ERRORS[code] : 'Não foi possível verificar o acesso no servidor. Tente entrar novamente.');
       setBusy(false);
     }
   };
@@ -82,7 +89,7 @@ export default function PortalLogin({ afterLogin }) {
         </Field>
         {sessaoExpirada && (
           <p className="border border-amber-600 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-            Sua sessão expirou ou foi encerrada. Entre novamente com CPF e senha para continuar.
+            Sua sessão foi encerrada. Para cadastrar um funcionário, entre com a conta que administra a empresa.
           </p>
         )}
         {criado && (

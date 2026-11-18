@@ -25,9 +25,9 @@ export default function CompanyPanel() {
       if (!res.data?.ok) throw new Error(res.data?.error || 'falha');
       setData(res.data);
     } catch (err) {
-      const code = err?.response?.data?.error || '';
+      const code = err?.data?.error ?? err?.response?.data?.error;
       if (SESSION_ERRORS.includes(code)) {
-        logout();
+        logout('expired');
         navigate('/login?expired=1', { replace: true });
         return;
       }

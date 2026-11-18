@@ -41,7 +41,7 @@ export default function NewCompanyForm({ onCreated, onRefresh }) {
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
 
   const sairPorSessao = () => {
-    logout();
+    logout('expired');
     navigate('/login?expired=1', { replace: true });
   };
 
