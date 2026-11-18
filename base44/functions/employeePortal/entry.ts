@@ -32,6 +32,7 @@ export default async function (req) {
 
     if (action === 'clock') {
       if ((actor.access_role || 'funcionario') !== 'funcionario') return respond(403, 'sem_permissao');
+      if (actor.status === 'afastado') return respond(403, 'funcionario_afastado');
       const kind = String(body?.kind || '');
       if (!KINDS.includes(kind)) return respond(400, 'tipo_invalido');
       const now = clockParts();
@@ -50,7 +51,6 @@ export default async function (req) {
       const record = await entities.TimeRecord.create({
         company_id: actor.company_id,
         employee_id: actor.id, date: now.date, kind, original_time: now.time,
-        recorded_at: new Date().toISOString(), source: 'employee_web',
       });
       return Response.json({ ok: true, record: {
         id: record.id, date: record.date, kind: record.kind, original_time: record.original_time,
