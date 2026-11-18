@@ -53,7 +53,7 @@ export default function EmployeeHome({ session }) {
       </div>
 
       <div className="mb-6 flex flex-wrap gap-3">
-        <Link className="border border-border bg-card px-4 py-2 text-sm hover:bg-accent" to="/ponto">Meu ponto</Link>
+        <Link className="border border-border bg-card px-4 py-2 text-sm hover:bg-accent" to="/ponto">Bater meu ponto</Link>
         <Link className="border border-border bg-card px-4 py-2 text-sm hover:bg-accent" to="/contracheques">Meu contracheque</Link>
       </div>
 
@@ -73,7 +73,7 @@ export default function EmployeeHome({ session }) {
                 </p>
               </>
             ) : (
-              <p className="text-sm text-muted-foreground">Nenhuma folha registrada para o seu CPF ainda.</p>
+              <p className="text-sm text-muted-foreground">Nenhum contracheque finalizado disponível para sua conta ainda.</p>
             )}
           </div>
           <div className="bg-card p-6">
