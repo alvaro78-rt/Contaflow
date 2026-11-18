@@ -9,9 +9,16 @@ import EmployeePicker from '@/components/EmployeePicker';
 import TimeTable from '@/components/time/TimeTable';
 import TimeMarkForm from '@/components/time/TimeMarkForm';
 import { currentCompetence } from '@/lib/format';
+import EmployeeTimeClock from '@/pages/EmployeeTimeClock';
 import { groupByDay, monthStats, fmtMin } from '@/lib/payroll';
 
 export default function TimeControl() {
+  const { session } = useSession();
+  if (session?.role === 'funcionario') return <EmployeeTimeClock />;
+  return <ManagerTimeControl />;
+}
+
+function ManagerTimeControl() {
   const { session } = useSession();
   const isAdmin = session?.role === 'admin';
   const [emp, setEmp] = useState(null);
