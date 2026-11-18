@@ -42,15 +42,15 @@ export default function CompanyPanel() {
 
   const stats = data
     ? [
-        ['Funcionários ativos', data.counts.ativos],
-        ['Afastados', data.counts.afastados],
-        ['Sem acesso criado', data.counts.sem_acesso],
+        ['Funcionários ativos', data.counts.ativos ?? 'Indisponível'],
+        ['Afastados', data.counts.afastados ?? 'Indisponível'],
+        ['Sem acesso criado', data.counts.sem_acesso ?? 'Indisponível'],
         ...(data.payroll ? [
-          [`Folhas · ${competenceLabel(data.competence)}`, data.payroll.folhas],
-          ['Finalizadas', data.payroll.finalizadas],
-          ['Total de proventos', money(data.payroll.proventos)],
-          ['Total de descontos', money(data.payroll.descontos)],
-          ['Líquido a pagar', money(data.payroll.liquido)],
+          [`Folhas · ${competenceLabel(data.competence)}`, data.payroll.folhas ?? 'Indisponível'],
+          ['Finalizadas', data.payroll.finalizadas ?? 'Indisponível'],
+          ['Total de proventos', data.payroll.proventos == null ? 'Indisponível' : money(data.payroll.proventos)],
+          ['Total de descontos', data.payroll.descontos == null ? 'Indisponível' : money(data.payroll.descontos)],
+          ['Líquido a pagar', data.payroll.liquido == null ? 'Indisponível' : money(data.payroll.liquido)],
         ] : []),
       ]
     : [];
