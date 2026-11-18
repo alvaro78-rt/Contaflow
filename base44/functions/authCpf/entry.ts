@@ -1,7 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.54';
 import { onlyDigits } from '../../shared/authHelpers.ts';
 import { isValidCpf } from '../../shared/cpf.ts';
-import { verifyPassword } from '../../shared/passwords.ts';
+import { newPasswordHash, verifyPassword } from '../../shared/passwords.ts';
 
 // Token opaco de sessão: sem dados do usuário embutidos, só o registro no servidor vale.
 const issueToken = () => `${crypto.randomUUID()}${crypto.randomUUID()}`.replace(/-/g, '');
@@ -28,6 +28,32 @@ export default async function (req) {
     if (action === 'masterExists') {
       // Conta desligada ou excluída não reabre o cadastro: basta existir conta ou empresa.
       return Response.json({ exists: await isProvisioned(base44) });
+    }
+
+    if (action === 'activate') {
+      const cpf = onlyDigits(body.cpf);
+      const birth = String(body.birth_date || '');
+      const password = body.password;
+      if (!isValidCpf(cpf) || !/^\d{4}-\d{2}-\d{2}$/.test(birth) || body.accepted !== true ||
+          typeof password !== 'string' || password.length < 6 || password.length > 128) {
+        return Response.json({ error: 'dados_invalidos' }, { status: 400 });
+      }
+      const { Employee } = base44.asServiceRole.entities;
+      const candidates = await Employee.filter({ cpf }, 'created_date', 2);
+      const employee = candidates[0];
+      const deny = () => Response.json({ error: 'ativacao_indisponivel' }, { status: 409 });
+      if (candidates.length !== 1 || !employee.company_id || employee.birth_date !== birth ||
+          (employee.access_role || 'funcionario') !== 'funcionario' || employee.status === 'desligado' || employee.password_hash) return deny();
+
+      const result = await Employee.updateMany({
+        id: employee.id, cpf, birth_date: birth, company_id: employee.company_id, status: { $ne: 'desligado' },
+        $and: [
+          { $or: [{ access_role: 'funcionario' }, { access_role: { $exists: false } }, { access_role: null }] },
+          { $or: [{ password_hash: { $exists: false } }, { password_hash: null }, { password_hash: '' }] },
+        ],
+      }, { $set: { password_hash: await newPasswordHash(password), terms_accepted: true, terms_accepted_at: new Date().toISOString() } });
+      if (result.updated !== 1) return deny();
+      return Response.json({ ok: true });
     }
 
     if (action === 'login') {

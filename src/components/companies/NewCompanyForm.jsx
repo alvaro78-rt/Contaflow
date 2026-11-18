@@ -11,13 +11,14 @@ import { useServices } from '@/lib/ServicesContext';
 
 const EMPTY = { name: '', owner_name: '', owner_cpf: '', password: '', confirm: '' };
 const TIMEOUT_MS = 25000;
-const CRIACAO_LIBERADA = false;
 
-const EXPIRED = ['sessao_invalida', 'sessao_expirada'];
+const EXPIRED = ['sessao_invalida', 'sessao_expirada', 'conta_desligada'];
 
 const ERROR_TEXT = {
+  empresa_inativa: 'Esta empresa está inativa.',
+  dono_divergente: 'Os dados informados não conferem com o acesso do dono já cadastrado.',
   somente_mestre: 'Somente a conta mestre pode criar empresas.',
-  cpf_ja_tem_acesso: 'Este CPF já tem acesso em outra empresa. Use outro CPF para o dono.',
+  cpf_ja_tem_acesso: 'Este CPF já está vinculado a outro cadastro. Confira os dados do dono.',
   senha_curta: 'A senha do dono deve ter ao menos 6 caracteres.',
   criacao_bloqueada:
     'O cadastro de empresa está bloqueado no servidor: ele ainda não garante cadastro único, então nada foi criado.',
@@ -54,7 +55,6 @@ export default function NewCompanyForm({ onCreated, onRefresh }) {
   const submit = async (e) => {
     e.preventDefault();
     if (emAndamento.current) return;
-    if (!CRIACAO_LIBERADA) return;
     setError('');
     setNotice('');
     const cpf = onlyDigits(f.owner_cpf);
@@ -99,10 +99,14 @@ export default function NewCompanyForm({ onCreated, onRefresh }) {
       });
       onCreated?.(data.company);
     } catch (err) {
-      const code = err?.response?.data?.error || err?.response?.data?.message || '';
+      const code = err?.data?.error ?? err?.response?.data?.error;
       if (EXPIRED.includes(code)) {
         expirou = true;
         sairPorSessao();
+        return;
+      }
+      if (ERROR_TEXT[code] && code !== 'estado_parcial') {
+        setError(ERROR_TEXT[code]);
         return;
       }
       if (err?.timeout) {
@@ -128,18 +132,9 @@ export default function NewCompanyForm({ onCreated, onRefresh }) {
     <form onSubmit={submit} className="space-y-4 border border-border bg-card p-5">
       <div>
         <p className="font-mono text-[11px] text-emerald-700">[NOVA EMPRESA]</p>
-        <h2 className="font-semibold">Criar um novo sistema</h2>
-        <p className="mt-1 text-xs text-muted-foreground">A empresa nasce vazia, com o dono já cadastrado e pronto para entrar.</p>
+        <h2 className="font-semibold">Criar empresa</h2>
+        <p className="mt-1 text-xs text-muted-foreground">O dono poderá entrar com o CPF e a senha definidos aqui.</p>
       </div>
-      {!CRIACAO_LIBERADA && (
-        <div className="border border-amber-600 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-          <p className="font-semibold">Cadastro de empresa bloqueado no servidor</p>
-          <p className="mt-1 text-xs">
-            O servidor ainda não garante cadastro único: duas tentativas simultâneas podem duplicar a empresa e uma falha
-            no meio pode deixá-la sem dono. Nenhum registro é criado enquanto isso — os campos abaixo são só uma prévia.
-          </p>
-        </div>
-      )}
       <Field label="Nome da empresa"><Input value={f.name} onChange={set('name')} placeholder="Ex.: Contabilidade Silva" /></Field>
       <Field label="Nome do dono"><Input value={f.owner_name} onChange={set('owner_name')} /></Field>
       <Field label="CPF do dono"><Input className="font-mono" inputMode="numeric" value={formatCpf(f.owner_cpf)} onChange={set('owner_cpf')} placeholder="000.000.000-00" /></Field>
@@ -151,8 +146,7 @@ export default function NewCompanyForm({ onCreated, onRefresh }) {
           <p className="font-semibold">Resultado desconhecido</p>
           <p>{notice}</p>
           <p className="text-xs">
-            A lista do mestre mostra o dono registrado na empresa, mas não confirma o acesso dele. Até isso ser
-            verificado, o cadastro fica como <strong>cadastro pendente de confirmação</strong> — não reenvie.
+            Confira a lista ou envie novamente os mesmos dados para concluir o cadastro.
           </p>
           {onRefresh && (
             <Button type="button" size="sm" variant="outline" onClick={atualizarLista} disabled={refreshing}>
@@ -161,8 +155,8 @@ export default function NewCompanyForm({ onCreated, onRefresh }) {
           )}
         </div>
       )}
-      <Button type="submit" className="w-full" disabled={busy || !CRIACAO_LIBERADA}>
-        {!CRIACAO_LIBERADA ? 'Cadastro bloqueado no servidor' : busy ? 'Criando…' : 'Criar empresa'}
+      <Button type="submit" className="w-full" disabled={busy}>
+        {busy ? 'Criando…' : 'Criar empresa'}
       </Button>
     </form>
   );

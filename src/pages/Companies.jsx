@@ -64,6 +64,10 @@ export default function Companies() {
         navigate('/login?expired=1', { replace: true });
         return;
       }
+      if (code === 'empresa_pendente') {
+        setError('O cadastro está pendente. Reenvie o formulário com os mesmos dados para concluir o vínculo do dono.');
+        return;
+      }
       setError(code === 'somente_mestre'
         ? 'Só a conta mestre abre empresas.'
         : 'Não foi possível abrir esta empresa agora. Tente novamente.');
@@ -106,7 +110,7 @@ export default function Companies() {
               </div>
             )}
             {!error && !loading && companies?.length === 0 && (
-              <p className="px-4 py-6 text-sm text-muted-foreground">Nenhuma empresa cadastrada. O cadastro de empresa está bloqueado no servidor nesta versão.</p>
+              <p className="px-4 py-6 text-sm text-muted-foreground">Nenhuma empresa cadastrada. Use o formulário para criar a primeira empresa.</p>
             )}
             {!error && companies?.map((company) => (
               <div key={company.id} className="flex items-center justify-between gap-3 border-b border-border px-4 py-3 last:border-0">

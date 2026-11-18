@@ -80,6 +80,9 @@ export default function PortalLogin({ afterLogin }) {
 
   return (
     <AuthShell title="Entrar" subtitle="Use o CPF e a senha do seu cadastro.">
+      {new URLSearchParams(window.location.search).get('activated') === '1' && (
+        <p className="mb-4 text-sm text-emerald-700">Acesso criado. Entre com seu CPF e a senha que você definiu.</p>
+      )}
       <form onSubmit={submit} className="space-y-4">
         <Field label="CPF">
           <Input className="font-mono" inputMode="numeric" value={formatCpf(form.cpf)} onChange={(e) => setForm({ ...form, cpf: e.target.value })} placeholder="000.000.000-00" autoComplete="username" />
@@ -99,12 +102,13 @@ export default function PortalLogin({ afterLogin }) {
         )}
         {error && <p className="border border-destructive bg-red-50 px-3 py-2 text-sm text-destructive">{error}</p>}
         <Button type="submit" className="w-full" disabled={busy}>{busy ? 'Verificando…' : 'Entrar'}</Button>
+        <Button asChild variant="outline" className="w-full"><Link to="/cadastro">Cadastrar-se</Link></Button>
         {noMaster && (
           <div className="space-y-2 border-emerald-600 bg-accent text-accent-foreground border px-3 py-2 text-xs">
             <p className="font-semibold">Primeiro acesso da instalação</p>
             <p>Nenhuma conta existe ainda. O gerente se cadastra com a chave de criação.</p>
             <Button asChild variant="outline" size="sm" className="w-full">
-              <Link to="/mestre">Cadastrar-se</Link>
+              <Link to="/mestre">Criar conta mestre</Link>
             </Button>
           </div>
         )}

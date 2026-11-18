@@ -33,6 +33,12 @@ export default async function (req) {
       .catch((e) => (e.status === 404 ? null : Promise.reject(e)));
     if (!company) return Response.json({ error: 'empresa_inexistente' }, { status: 404 });
 
+    if (company.owner_cpf && !company.owner_name) {
+      const pending = await base44.asServiceRole.entities.Employee.filter({
+        company_id: 'criando:' + company.name, cpf: company.owner_cpf, access_role: 'admin',
+      }, 'id', 1);
+      if (pending.length) return Response.json({ error: 'empresa_pendente' }, { status: 409 });
+    }
     await base44.asServiceRole.entities.AuthSession.update(session.id, { company_id: company.id });
 
     return Response.json({
