@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { UserPlus, Users, RefreshCw } from 'lucide-react';
+import { RefreshCw } from 'lucide-react';
+import { MODULES } from '@/lib/modules';
 import { base44 } from '@/api/base44Client';
 import { Button } from '@/components/ui/button';
 import { useSession } from '@/lib/SessionContext';
@@ -44,11 +45,13 @@ export default function CompanyPanel() {
         ['Funcionários ativos', data.counts.ativos],
         ['Afastados', data.counts.afastados],
         ['Sem acesso criado', data.counts.sem_acesso],
-        [`Folhas · ${competenceLabel(data.competence)}`, data.payroll.folhas],
-        ['Finalizadas', data.payroll.finalizadas],
-        ['Total de proventos', money(data.payroll.proventos)],
-        ['Total de descontos', money(data.payroll.descontos)],
-        ['Líquido a pagar', money(data.payroll.liquido)],
+        ...(data.payroll ? [
+          [`Folhas · ${competenceLabel(data.competence)}`, data.payroll.folhas],
+          ['Finalizadas', data.payroll.finalizadas],
+          ['Total de proventos', money(data.payroll.proventos)],
+          ['Total de descontos', money(data.payroll.descontos)],
+          ['Líquido a pagar', money(data.payroll.liquido)],
+        ] : []),
       ]
     : [];
 
@@ -62,19 +65,6 @@ export default function CompanyPanel() {
         <p className="mt-2 text-sm text-muted-foreground">
           {data ? `Perfil ${data.profile.name ? `de ${data.profile.name}` : ''} · competência ${competenceLabel(data.competence)}` : 'Lendo os dados da empresa…'}
         </p>
-      </div>
-
-      <div className="grid gap-3 sm:grid-cols-2">
-        <Link to="/funcionarios" className="group border border-border bg-card p-5 transition-colors hover:bg-accent">
-          <Users className="mb-4 h-5 w-5 text-primary group-hover:text-emerald-700" strokeWidth={1.5} />
-          <p className="font-semibold">Funcionários</p>
-          <p className="text-sm text-muted-foreground">Veja quem já tem acesso nesta empresa.</p>
-        </Link>
-        <Link to="/funcionarios/novo" className="group border border-border bg-card p-5 transition-colors hover:bg-accent">
-          <UserPlus className="mb-4 h-5 w-5 text-primary group-hover:text-emerald-700" strokeWidth={1.5} />
-          <p className="font-semibold">Novo funcionário</p>
-          <p className="text-sm text-muted-foreground">Cadastre nome, CPF e a senha inicial.</p>
-        </Link>
       </div>
 
       {loading && !data && <p className="text-sm text-muted-foreground">Carregando os números desta empresa…</p>}
@@ -98,6 +88,19 @@ export default function CompanyPanel() {
           ))}
         </div>
       )}
+
+      <div className="grid gap-px border border-border bg-border sm:grid-cols-2 lg:grid-cols-3">
+        {MODULES.map(({ path, code, title, desc, icon: Icon }) => (
+          <Link key={path} to={path} className="group bg-card p-6 transition-colors hover:bg-accent">
+            <div className="mb-8 flex items-center justify-between">
+              <Icon className="h-6 w-6 text-primary group-hover:text-emerald-700" strokeWidth={1.5} />
+              <span className="font-mono text-xs text-muted-foreground">[{code}]</span>
+            </div>
+            <h2 className="font-semibold">{title}</h2>
+            <p className="mt-1 text-sm text-muted-foreground">{desc}</p>
+          </Link>
+        ))}
+      </div>
     </div>
   );
 }

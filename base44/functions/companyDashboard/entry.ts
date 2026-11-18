@@ -36,9 +36,9 @@ export default async function (req) {
     }
 
     // Perfil autorizado a ver os totais financeiros: dono da empresa (admin) ou a conta
-    // mestre que entrou nesta empresa. Qualquer outro perfil recebe 403 antes de ler valores.
+    // mestre que entrou nesta empresa. O gerente pode ler os indicadores de pessoal.
     const role = actor.access_role || 'funcionario';
-    if (role !== 'admin' && role !== 'master') {
+    if (!['admin', 'master', 'gerente'].includes(role)) {
       return Response.json({ error: 'sem_permissao', role }, { status: 403 });
     }
 
@@ -55,19 +55,32 @@ export default async function (req) {
     const competence = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
     const scope = { company_id: company.id };
 
-    const [ativos, afastados, semAcesso, folhas, finalizadas, agg] = await Promise.all([
-      base44.asServiceRole.entities.Employee.count({ ...scope, status: 'ativo' }),
-      base44.asServiceRole.entities.Employee.count({ ...scope, status: 'afastado' }),
-      base44.asServiceRole.entities.Employee.count({ ...scope, password_hash: { $exists: false } }),
-      base44.asServiceRole.entities.Payroll.count({ ...scope, competence }),
-      base44.asServiceRole.entities.Payroll.count({ ...scope, competence, status: 'finalizada' }),
-      base44.asServiceRole.entities.Payroll.aggregate({
-        query: { ...scope, competence },
-        sum: ['total_earnings', 'total_deductions', 'net_salary'],
-      }),
+    const { Employee, Payroll } = base44.asServiceRole.entities;
+    const [ativos, afastados, semAcesso] = await Promise.all([
+      Employee.count({ ...scope, $or: [{ status: 'ativo' }, { status: { $exists: false } }] }),
+      Employee.count({ ...scope, status: 'afastado' }),
+      Employee.count({ ...scope, $or: [{ password_hash: { $exists: false } }, { password_hash: '' }, { password_hash: null }] }),
     ]);
 
-    const row = (agg && agg.rows && agg.rows[0]) || {};
+    let payroll = null;
+    if (role !== 'gerente') {
+      const [folhas, finalizadas, agg] = await Promise.all([
+        Payroll.count({ ...scope, competence }),
+        Payroll.count({ ...scope, competence, status: 'finalizada' }),
+        Payroll.aggregate({
+          query: { ...scope, competence },
+          sum: ['total_earnings', 'total_deductions', 'net_salary'],
+        }),
+      ]);
+      const row = agg?.rows?.[0] || {};
+      payroll = {
+        folhas,
+        finalizadas,
+        proventos: row.sum_total_earnings || 0,
+        descontos: row.sum_total_deductions || 0,
+        liquido: row.sum_net_salary || 0,
+      };
+    }
 
     return Response.json({
       ok: true,
@@ -75,13 +88,7 @@ export default async function (req) {
       profile: { name: actor.full_name || '', role: actor.access_role || 'funcionario' },
       counts: { ativos, afastados, sem_acesso: semAcesso },
       competence,
-      payroll: {
-        folhas,
-        finalizadas,
-        proventos: row.sum_total_earnings || 0,
-        descontos: row.sum_total_deductions || 0,
-        liquido: row.sum_net_salary || 0,
-      },
+      payroll,
       read_at: new Date().toISOString(),
     });
   } catch (error) {

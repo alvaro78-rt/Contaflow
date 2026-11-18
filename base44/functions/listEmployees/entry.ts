@@ -1,45 +1,39 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.54';
-import { loadSession, scopeCompany, MANAGEMENT_ROLES } from '../../shared/sessionGuard.ts';
+import { employeeAdmin, employeeDetails, employeeRow, fail, ok, scopedRecord } from '../../shared/employeeAdmin.ts';
+import { onlyDigits } from '../../shared/cpf.ts';
 
-// Lista os funcionários da empresa em uso. A empresa vem da sessão validada, não do navegador.
+const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
 export default async function (req) {
-  if (req.method !== 'POST') {
-    return Response.json({ error: 'metodo_invalido' }, { status: 405 });
-  }
-
-  const base44 = createClientFromRequest(req);
-  const body = await req.json().catch(() => ({}));
+  if (req.method !== 'POST') return fail(405, 'metodo_invalido');
 
   try {
-    const loaded = await loadSession(base44, body?.token);
-    if (loaded.error) return Response.json({ error: loaded.error }, { status: loaded.status });
-    const { session, actor } = loaded;
+    const body = await req.json().catch(() => null);
+    const admin = await employeeAdmin(createClientFromRequest(req), body?.token);
+    if (admin.response) return admin.response;
+    const { companyId, entities } = admin;
 
-    const scope = scopeCompany(session, actor);
-    if (!scope) return Response.json({ error: 'sem_empresa' }, { status: 403 });
-    if (!MANAGEMENT_ROLES.includes(actor.access_role || '')) {
-      return Response.json({ error: 'sem_permissao' }, { status: 403 });
+    if (body.id !== undefined) {
+      const employee = await scopedRecord(entities.Employee, body.id, companyId);
+      if (!employee || employee.access_role === 'master') return fail(404, 'funcionario_inexistente');
+      return ok({ employee: employeeDetails(employee) });
     }
 
-    const { items } = await base44.asServiceRole.entities.Employee.filter(
-      { company_id: scope },
-      { sort: 'full_name', limit: 200 },
-    );
-
-    return Response.json({
-      ok: true,
-      employees: items.map((e) => ({
-        id: e.id,
-        full_name: e.full_name || '',
-        cpf: e.cpf || '',
-        status: e.status || 'ativo',
-        access_role: e.access_role || 'funcionario',
-        department: e.department || '',
-        base_salary: e.base_salary || 0,
-        tem_acesso: Boolean(e.password_hash),
-      })),
+    const query = { company_id: companyId, access_role: { $ne: 'master' } };
+    const term = typeof body.term === 'string' ? body.term.trim().slice(0, 100) : '';
+    if (body.by === 'cpf' && term) query.cpf = { $regex: onlyDigits(term) || '^$a' };
+    if (body.by === 'name' && term) query.full_name = { $regex: escapeRegex(term), $options: 'i' };
+    if (typeof body.position_id === 'string' && body.position_id) query.position_id = body.position_id;
+    if (body.status === 'ativo') query.$or = [{ status: 'ativo' }, { status: { $exists: false } }];
+    if (body.status === 'afastado' || body.status === 'desligado') query.status = body.status;
+    const cursor = typeof body.cursor === 'string' ? body.cursor : undefined;
+    const limit = Math.min(Math.max(Number(body.limit) || 100, 1), 200);
+    const { items, next_cursor } = await entities.Employee.filter(query, { sort: 'full_name', limit, cursor });
+    return ok({
+      employees: items.filter((e) => e.company_id === companyId && e.access_role !== 'master').map(employeeRow),
+      next_cursor: next_cursor || null,
     });
-  } catch (error) {
-    return Response.json({ error: 'falha_servidor', message: error.message }, { status: 500 });
+  } catch {
+    return fail(500, 'falha_servidor');
   }
 }

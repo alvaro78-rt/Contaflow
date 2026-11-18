@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { base44 } from '@/api/base44Client';
 import { Image } from '@/components/ui/image';
 import { Button } from '@/components/ui/button';
@@ -10,7 +10,8 @@ import PageHeader from '@/components/PageHeader';
 import Field from '@/components/Field';
 import FormSection from '@/components/employees/FormSection';
 import DependentsEditor from '@/components/employees/DependentsEditor';
-import { hashPassword } from '@/lib/auth';
+import { employeeCatalog, employeeError, getEmployee, saveEmployee } from '@/api/employeeAdmin';
+import { useSession } from '@/lib/SessionContext';
 import { formatCpf, formatPis, onlyDigits } from '@/lib/format';
 import { cpfMessage, isValidCpf } from '@/lib/cpf';
 
@@ -27,6 +28,8 @@ function Pick({ value, onChange, options, placeholder }) {
 
 export default function EmployeeForm() {
   const { id } = useParams();
+  const { session } = useSession();
+  const token = session?.token;
   const navigate = useNavigate();
   const { toast } = useToast();
   const [f, setF] = useState(EMPTY);
@@ -34,12 +37,30 @@ export default function EmployeeForm() {
   const [positions, setPositions] = useState([]);
   const [schedules, setSchedules] = useState([]);
   const [errors, setErrors] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [ready, setReady] = useState(false);
+  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    base44.entities.Position.filter({}, { sort: 'name', limit: 200 }).then((r) => setPositions(r.items));
-    base44.entities.WorkSchedule.filter({}, { sort: 'name', limit: 100 }).then((r) => setSchedules(r.items));
-    if (id) base44.entities.Employee.get(id).then((e) => setF({ ...EMPTY, ...e }));
-  }, [id]);
+    let active = true;
+    setLoading(true);
+    setReady(false);
+    setErrors([]);
+    setPassword('');
+    Promise.all([employeeCatalog(token), id ? getEmployee(token, id) : null])
+      .then(([catalog, record]) => {
+        if (!active) return;
+        setPositions(catalog.positions);
+        setSchedules(catalog.schedules);
+        setF({ ...EMPTY, ...record?.employee });
+        setReady(true);
+      })
+      .catch((error) => {
+        if (active) setErrors([employeeError(error, 'Não foi possível carregar o cadastro. Atualize a página para tentar novamente.')]);
+      })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [id, token]);
 
   const set = (k) => (e) => setF({ ...f, [k]: e.target ? e.target.value : e });
   const pickSchedule = (sid) => {
@@ -49,8 +70,12 @@ export default function EmployeeForm() {
   const upload = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const { file_url } = await base44.integrations.Core.UploadPublicFile({ file });
-    setF({ ...f, photo_url: file_url });
+    try {
+      const { file_url } = await base44.integrations.Core.UploadPublicFile({ file });
+      setF((current) => ({ ...current, photo_url: file_url }));
+    } catch {
+      setErrors(['Não foi possível enviar a foto.']);
+    }
   };
 
   const save = async () => {
@@ -65,31 +90,29 @@ export default function EmployeeForm() {
     if (!f.position_id) errs.push('Selecione o cargo.');
     if (!f.schedule_id) errs.push('Selecione a jornada.');
     if (!(Number(f.base_salary) > 0)) errs.push('Informe o salário-base.');
-    if (password && password.length < 6) errs.push('A senha deve ter ao menos 6 caracteres.');
-    if (password && !f.username.trim()) errs.push('Informe o nome de usuário para definir a senha.');
-    if (!errs.length) {
-      const dup = await base44.entities.Employee.filter({ cpf: onlyDigits(f.cpf) }, { limit: 2 });
-      if (dup.items.some((d) => d.id !== id)) errs.push('Já existe um funcionário cadastrado com este CPF.');
-      if (f.username.trim()) {
-        const dupUser = await base44.entities.Employee.filter({ username: f.username.trim() }, { limit: 2 });
-        if (dupUser.items.some((d) => d.id !== id)) errs.push('Este nome de usuário já está em uso.');
-      }
-    }
+    if (password && (password.length < 6 || password.length > 128)) errs.push('A senha deve ter entre 6 e 128 caracteres.');
     setErrors(errs);
     if (errs.length) return;
-    const { id: _i, created_date, updated_date, created_by_id, password_hash, username: _username, ...rest } = f;
-    const data = { ...rest, cpf: onlyDigits(f.cpf), pis: onlyDigits(f.pis), base_salary: Number(f.base_salary), weekly_hours: Number(f.weekly_hours) || undefined };
-    if (f.username.trim()) data.username = f.username.trim();
-    if (password) data.password_hash = await hashPassword(data.cpf, password);
-    if (id) await base44.entities.Employee.update(id, data);
-    else await base44.entities.Employee.create(data);
-    toast({ title: id ? 'Cadastro atualizado' : 'Cadastro do funcionário realizado' });
-    navigate('/funcionarios');
+    setBusy(true);
+    try {
+      const employee = { ...f, cpf: onlyDigits(f.cpf), pis: onlyDigits(f.pis), base_salary: Number(f.base_salary), weekly_hours: f.weekly_hours === '' ? undefined : Number(f.weekly_hours) };
+      await saveEmployee(token, { action: 'save', id, employee, password });
+      toast({ title: id ? 'Cadastro atualizado' : 'Cadastro do funcionário realizado' });
+      navigate('/funcionarios');
+    } catch (error) {
+      setErrors([employeeError(error, 'Não foi possível salvar o cadastro do funcionário.')]);
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
     <div className="max-w-4xl space-y-5">
       <PageHeader code="RF03" title={id ? 'Editar funcionário' : 'Cadastro de funcionários'} description="Dados pessoais, endereço, dependentes, contrato, acesso ao sistema e informações bancárias." />
+      {!id && <Button variant="outline" asChild><Link to="/funcionarios/novo/rapido">Cadastro rápido com CPF e senha</Link></Button>}
+      {loading && <p className="text-sm text-muted-foreground">Carregando cadastro…</p>}
+      {!loading && !ready && <p role="alert" className="text-sm text-destructive">{errors[0]}</p>}
+      {ready && <>
       <FormSection code="01" title="Dados pessoais">
         <div className="flex items-center gap-5 sm:col-span-2">
           <div className="grid h-20 w-20 shrink-0 place-items-center overflow-hidden border border-border bg-secondary">
@@ -138,15 +161,19 @@ export default function EmployeeForm() {
         <Field label="Salário-base (R$)"><Input type="number" step="0.01" className="font-mono" value={f.base_salary} onChange={set('base_salary')} /></Field>
       </FormSection>
       <FormSection code="05" title="Acesso ao sistema">
-        <Field label="Nome de usuário"><Input value={f.username} onChange={set('username')} autoComplete="off" /></Field>
-        <Field label={id ? 'Senha (deixe em branco para manter)' : 'Senha'}>
-          <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••" autoComplete="new-password" />
+        <Field label="Nome de usuário (opcional)"><Input value={f.username} onChange={set('username')} autoComplete="off" /></Field>
+        <Field label={id ? 'Senha (deixe em branco para manter)' : 'Senha inicial (opcional)'}>
+          <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••" maxLength={128} autoComplete="new-password" />
         </Field>
         <Field label="Perfil de acesso" className="sm:col-span-2">
-          <Pick value={f.access_role} onChange={set('access_role')} options={[['admin', 'Administrador (dono) — acesso total'], ['gerente', 'Gerente — acesso ao administrativo'], ['funcionario', 'Colaborador — acesso ao administrativo']]} />
+          {session?.role === 'gerente' || (id && f.id === session?.id) ? (
+            <p className="text-sm">{f.access_role === 'gerente' ? 'Gerente' : f.access_role === 'admin' ? 'Administrador' : 'Colaborador'}</p>
+          ) : (
+            <Pick value={f.access_role} onChange={set('access_role')} options={[['admin', 'Administrador'], ['gerente', 'Gerente'], ['funcionario', 'Colaborador']]} />
+          )}
         </Field>
         <p className="text-xs text-muted-foreground sm:col-span-2">
-          Deixe usuário e senha em branco para o funcionário criar o próprio acesso em <strong>Cadastrar</strong>, usando o CPF. Se definir aqui, o acesso já fica pronto. O login é sempre feito com o CPF.
+          O login é feito com o CPF. Se a senha inicial ficar em branco, o cadastro fica salvo sem acesso até a senha ser definida.
         </p>
         <p className="border border-border bg-secondary/50 px-3 py-2 text-xs text-muted-foreground sm:col-span-2">
           Para passar o sistema a outro dono, use <strong>Minha conta → Trocar o dono do sistema</strong>: você escolhe o funcionário, define a senha dele e o seu acesso passa a ser de funcionário.
@@ -160,9 +187,10 @@ export default function EmployeeForm() {
       </FormSection>
       {errors.length > 0 && <ul className="border border-destructive bg-red-50 px-4 py-3 text-sm text-destructive">{errors.map((e) => <li key={e}>• {e}</li>)}</ul>}
       <div className="flex gap-3">
-        <Button onClick={save}>Salvar</Button>
+        <Button onClick={save} disabled={busy}>{busy ? 'Salvando…' : 'Salvar'}</Button>
         <Button variant="ghost" onClick={() => navigate('/funcionarios')}>Cancelar</Button>
       </div>
+      </>}
     </div>
   );
 }

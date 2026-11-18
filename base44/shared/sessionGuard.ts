@@ -7,7 +7,8 @@ export async function loadSession(base44, token) {
   const { items } = await base44.asServiceRole.entities.AuthSession.filter({ token: value }, { limit: 1 });
   const session = items[0];
   if (!session || !session.employee_id) return { status: 401, error: 'sessao_invalida' };
-  if (!session.expires_at || new Date(session.expires_at).getTime() <= Date.now()) {
+  const expiresAt = Date.parse(session.expires_at);
+  if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) {
     return { status: 401, error: 'sessao_expirada' };
   }
 

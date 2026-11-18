@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { base44 } from '@/api/base44Client';
+import { employeeError, saveEmployee, SESSION_ERRORS } from '@/api/employeeAdmin';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import PageHeader from '@/components/PageHeader';
@@ -40,25 +40,22 @@ export default function NewEmployee() {
 
     setBusy(true);
     try {
-      const res = await base44.functions.invoke('createEmployeeAccess', {
-        token: session?.token,
+      const { employee } = await saveEmployee(session?.token, {
         full_name: f.full_name.trim(),
         cpf,
         password: f.password,
       });
-      const employee = res.data?.employee;
-      if (!res.data?.ok || !employee) throw new Error('falha');
+      if (!employee?.tem_acesso) throw new Error('falha');
       // Só confirma depois que o servidor devolveu o vínculo salvo.
       setOk(`Funcionário cadastrado com sucesso. Login: ${formatCpf(cpf)} e a senha inicial definida.`);
       setF({ full_name: '', cpf: '', password: '' });
     } catch (err) {
-      const code = err?.response?.data?.error || '';
-      if (code === 'sessao_expirada' || code === 'sessao_invalida' || code === 'conta_desligada') {
+      if (SESSION_ERRORS.includes(err.code)) {
         logout();
         navigate('/login?expired=1', { replace: true });
         return;
       }
-      setError(MENSAGENS[code] || 'Não foi possível cadastrar o funcionário agora.');
+      setError(employeeError(err, 'Não foi possível cadastrar o funcionário agora.'));
     } finally {
       setBusy(false);
     }
@@ -75,13 +72,13 @@ export default function NewEmployee() {
           <Input className="font-mono" inputMode="numeric" value={formatCpf(f.cpf)} onChange={(e) => setF({ ...f, cpf: e.target.value })} placeholder="000.000.000-00" autoComplete="off" />
         </Field>
         <Field label="Senha inicial">
-          <Input type="password" value={f.password} onChange={(e) => setF({ ...f, password: e.target.value })} placeholder="Mínimo 6 caracteres" autoComplete="new-password" />
+          <Input type="password" value={f.password} onChange={(e) => setF({ ...f, password: e.target.value })} placeholder="Mínimo 6 caracteres" maxLength={128} autoComplete="new-password" />
         </Field>
         {error && <p className="border border-destructive bg-red-50 px-3 py-2 text-sm text-destructive">{error}</p>}
         {ok && <p className="border border-emerald-600 bg-accent px-3 py-2 text-sm text-accent-foreground">{ok}</p>}
         <div className="flex gap-3">
           <Button type="submit" disabled={busy}>{busy ? 'Salvando…' : 'Cadastrar funcionário'}</Button>
-          <Button type="button" variant="ghost" asChild><Link to="/funcionarios">Ver funcionários</Link></Button>
+          <Button variant="ghost" asChild><Link to="/funcionarios/novo">Cadastro completo</Link></Button>
         </div>
       </form>
     </div>

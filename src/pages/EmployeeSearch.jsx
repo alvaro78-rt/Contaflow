@@ -1,7 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { escapeRegExp } from 'lodash';
-import { base44 } from '@/api/base44Client';
+import { employeeCatalog, employeeError, getEmployee, searchEmployees } from '@/api/employeeAdmin';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -12,7 +11,7 @@ import DeleteEmployeeDialog from '@/components/employees/DeleteEmployeeDialog';
 import StatusBadge from '@/components/employees/StatusBadge';
 import { useSession } from '@/lib/SessionContext';
 import { ROLE_LABEL } from '@/lib/auth';
-import { formatCpf, onlyDigits, money } from '@/lib/format';
+import { formatCpf, money } from '@/lib/format';
 
 export default function EmployeeSearch() {
   const [by, setBy] = useState('name');
@@ -24,19 +23,59 @@ export default function EmployeeSearch() {
   const [selected, setSelected] = useState(null);
   const [toDelete, setToDelete] = useState(null);
   const { session } = useSession();
+  const token = session?.token;
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [nextCursor, setNextCursor] = useState(null);
+  const filters = useRef({});
+  const request = useRef(0);
 
-  const search = async () => {
-    let query = {};
-    if (by === 'name' && q) query = { full_name: { $regex: escapeRegExp(q), $options: 'i' } };
-    if (by === 'cpf' && q) query = { cpf: { $regex: onlyDigits(q) || 'x' } };
-    if (by === 'position' && positionId) query = { position_id: positionId };
-    if (status === 'ativo') query = { ...query, $or: [{ status: 'ativo' }, { status: { $exists: false } }] };
-    else if (status) query = { ...query, status };
-    const r = await base44.entities.Employee.filter(query, { sort: 'full_name', limit: 100 });
-    setResults(r.items);
+  const load = async (params, cursor) => {
+    const current = ++request.current;
+    setLoading(true);
+    setError('');
+    try {
+      const page = await searchEmployees(token, { ...params, cursor });
+      if (current !== request.current) return;
+      setResults((rows) => cursor ? [...(rows || []), ...page.employees] : page.employees);
+      setNextCursor(page.next_cursor);
+    } catch (err) {
+      if (current !== request.current) return;
+      setError(employeeError(err, 'Não foi possível consultar os funcionários.'));
+      if (!cursor) setResults(null);
+    } finally {
+      if (current === request.current) setLoading(false);
+    }
   };
 
-  useEffect(() => { base44.entities.Position.filter({}, { sort: 'name', limit: 200 }).then((r) => setPositions(r.items)); search(); }, []);
+  const search = () => {
+    filters.current = { by, term: q, position_id: by === 'position' ? positionId : undefined, status };
+    setNextCursor(null);
+    return load(filters.current);
+  };
+
+  useEffect(() => {
+    let active = true;
+    setResults(null);
+    setSelected(null);
+    setToDelete(null);
+    setNextCursor(null);
+    filters.current = {};
+    employeeCatalog(token)
+      .then((catalog) => { if (active) setPositions(catalog.positions); })
+      .catch((err) => { if (active) setError(employeeError(err, 'Não foi possível carregar os cargos.')); });
+    load(filters.current);
+    return () => { active = false; request.current += 1; };
+  }, [token, session?.company_id]);
+
+  const view = async (id) => {
+    try {
+      const { employee } = await getEmployee(token, id);
+      setSelected(employee);
+    } catch (err) {
+      setError(employeeError(err, 'Não foi possível carregar os dados do funcionário.'));
+    }
+  };
 
   const posName = (id) => positions.find((p) => p.id === id)?.name || '—';
 
@@ -64,9 +103,11 @@ export default function EmployeeSearch() {
             <SelectItem value="desligado">Desligados</SelectItem>
           </SelectContent>
         </Select>
-        <Button onClick={search}>Pesquisar</Button>
+        <Button onClick={search} disabled={loading}>Pesquisar</Button>
         <Button variant="outline" asChild><Link to="/funcionarios/novo">Novo</Link></Button>
       </div>
+      {error && <p role="alert" className="mb-4 text-sm text-destructive">{error}</p>}
+      {loading && <p className="mb-4 text-sm text-muted-foreground">Carregando funcionários…</p>}
       {results && results.length === 0 && <Empty>Nenhum registro foi encontrado.</Empty>}
       {results && results.length > 0 && (
         <div className="overflow-x-auto border border-border bg-card">
@@ -88,9 +129,10 @@ export default function EmployeeSearch() {
                     </span>
                   </td>
                   <td className="px-4 py-2">{posName(e.position_id)}</td>
+                  <td className="px-4 py-2">{e.tem_acesso ? 'Senha definida' : 'Sem senha'}</td>
                   <td className="px-4 py-2 text-right font-mono">{money(e.base_salary)}</td>
                   <td className="space-x-3 px-4 py-2 text-right">
-                    <button className="text-xs text-emerald-700 underline" onClick={() => setSelected(e)}>Visualizar</button>
+                    <button className="text-xs text-emerald-700 underline" onClick={() => view(e.id)}>Visualizar</button>
                     <Link className="text-xs text-emerald-700 underline" to={`/funcionarios/${e.id}/editar`}>Editar</Link>
                     <button className="text-xs text-destructive underline" onClick={() => setToDelete(e)}>Excluir</button>
                   </td>
@@ -100,10 +142,11 @@ export default function EmployeeSearch() {
           </table>
         </div>
       )}
+      {nextCursor && <Button className="mt-4" variant="outline" disabled={loading} onClick={() => load(filters.current, nextCursor)}>Carregar mais</Button>}
       <EmployeeDetails employee={selected} positionName={selected ? posName(selected.position_id) : ''} onClose={() => setSelected(null)} />
       <DeleteEmployeeDialog
         employee={toDelete}
-        currentId={session?.id}
+        token={token}
         onClose={() => setToDelete(null)}
         onDeleted={(emp) => { setResults((r) => (r || []).filter((x) => x.id !== emp.id)); setToDelete(null); }}
       />

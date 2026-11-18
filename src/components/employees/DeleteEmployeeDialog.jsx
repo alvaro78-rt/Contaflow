@@ -1,30 +1,27 @@
 import { useState } from 'react';
-import { base44 } from '@/api/base44Client';
+import { employeeError, saveEmployee } from '@/api/employeeAdmin';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
-export default function DeleteEmployeeDialog({ employee, currentId, onClose, onDeleted }) {
+export default function DeleteEmployeeDialog({ employee, token, onClose, onDeleted }) {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
   const confirm = async () => {
     setError('');
-    if (employee.id === currentId) {
-      return setError('Você não pode excluir o próprio acesso. Entre com o CPF do novo dono e exclua este cadastro por lá.');
-    }
-    if (employee.access_role === 'admin') {
-      const admins = await base44.entities.Employee.filter({ access_role: 'admin' });
-      if (admins.length <= 1) {
-        return setError('Este é o administrador do sistema. Crie o acesso do novo dono antes de excluir este.');
-      }
-    }
     setBusy(true);
-    await base44.entities.Employee.delete(employee.id);
-    onDeleted(employee);
+    try {
+      await saveEmployee(token, { action: 'delete', id: employee.id });
+      onDeleted(employee);
+    } catch (err) {
+      setError(employeeError(err, 'Não foi possível excluir o cadastro.'));
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
-    <Dialog open={!!employee} onOpenChange={(o) => !o && onClose()}>
+    <Dialog open={!!employee} onOpenChange={(o) => { if (!o && !busy) { setError(''); onClose(); } }}>
       <DialogContent>
         <DialogHeader><DialogTitle>Excluir cadastro</DialogTitle></DialogHeader>
         <p className="text-sm text-muted-foreground">
@@ -33,7 +30,7 @@ export default function DeleteEmployeeDialog({ employee, currentId, onClose, onD
         {error && <p className="border border-destructive bg-red-50 px-3 py-2 text-sm text-destructive">{error}</p>}
         <div className="flex gap-3">
           <Button variant="destructive" onClick={confirm} disabled={busy}>{busy ? 'Excluindo…' : 'Excluir'}</Button>
-          <Button variant="ghost" onClick={onClose}>Cancelar</Button>
+          <Button variant="ghost" disabled={busy} onClick={() => { setError(''); onClose(); }}>Cancelar</Button>
         </div>
       </DialogContent>
     </Dialog>

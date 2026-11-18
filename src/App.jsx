@@ -18,7 +18,8 @@ import RequireMaster from '@/components/RequireMaster';
 import PortalRegister from '@/pages/PortalRegister';
 import PortalForgot from '@/pages/PortalForgot';
 import Dashboard from '@/pages/Dashboard';
-import Employees from '@/pages/Employees';
+import EmployeeSearch from '@/pages/EmployeeSearch';
+import EmployeeForm from '@/pages/EmployeeForm';
 import NewEmployee from '@/pages/NewEmployee';
 import Positions from '@/pages/Positions';
 import Schedules from '@/pages/Schedules';
@@ -75,11 +76,15 @@ const AuthenticatedApp = () => {
           <Route path="/ponto" element={<TimeControl />} />
           <Route path="/contracheques" element={<Payslips />} />
           <Route path="/minha-senha" element={<MyAccount />} />
-          <Route element={<AdminOnly />}>
-            <Route path="/funcionarios" element={<Employees />} />
-            <Route path="/funcionarios/novo" element={<NewEmployee />} />
+          <Route element={<AdminOnly management />}>
+            <Route path="/funcionarios" element={<EmployeeSearch />} />
+            <Route path="/funcionarios/novo" element={<EmployeeForm />} />
+            <Route path="/funcionarios/novo/rapido" element={<NewEmployee />} />
+            <Route path="/funcionarios/:id/editar" element={<EmployeeForm />} />
             <Route path="/cargos" element={<Positions />} />
             <Route path="/jornadas" element={<Schedules />} />
+          </Route>
+          <Route element={<AdminOnly />}>
             <Route path="/correcao-ponto" element={<TimeCorrection />} />
             <Route path="/rubricas" element={<Rubrics />} />
             <Route path="/folha" element={<PayrollGenerate />} />

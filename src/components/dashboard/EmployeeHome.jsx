@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { base44 } from '@/api/base44Client';
 import { useSession } from '@/lib/SessionContext';
 import { competenceLabel, money } from '@/lib/format';
@@ -50,6 +50,11 @@ export default function EmployeeHome({ session }) {
           {data?.employee?.company_name ? `${data.employee.company_name} · ` : ''}
           você vê aqui apenas os seus próprios dados.
         </p>
+      </div>
+
+      <div className="mb-6 flex flex-wrap gap-3">
+        <Link className="border border-border bg-card px-4 py-2 text-sm hover:bg-accent" to="/ponto">Meu ponto</Link>
+        <Link className="border border-border bg-card px-4 py-2 text-sm hover:bg-accent" to="/contracheques">Meu contracheque</Link>
       </div>
 
       {loading && <p className="text-sm text-muted-foreground">Carregando seus dados…</p>}

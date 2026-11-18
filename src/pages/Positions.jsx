@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { base44 } from '@/api/base44Client';
+import { employeeCatalog, employeeError, searchEmployees } from '@/api/employeeAdmin';
+import { useSession } from '@/lib/SessionContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -17,26 +18,46 @@ export default function Positions() {
   const [viewing, setViewing] = useState(null);
   const [members, setMembers] = useState([]);
   const { toast } = useToast();
+  const { session } = useSession();
+  const token = session?.token;
+  const [busy, setBusy] = useState(false);
 
-  const load = () => base44.entities.Position.filter({}, { sort: 'code', limit: 200 }).then((r) => setList(r.items));
-  useEffect(() => { load(); }, []);
+  const load = async () => {
+    try {
+      const { positions } = await employeeCatalog(token);
+      setList(positions);
+    } catch (err) {
+      setError(employeeError(err, 'Não foi possível carregar os cargos.'));
+    }
+  };
+  useEffect(() => { load(); }, [token, session?.company_id]);
 
   const save = async () => {
     setError('');
     if (!form.code.trim() || !form.name.trim()) return setError('Preencha o código e o nome do cargo.');
-    const dup = await base44.entities.Position.filter({ code: form.code.trim() }, { limit: 2 });
-    if (dup.items.some((d) => d.id !== editId)) return setError('Já existe um cargo com este código.');
-    const data = { code: form.code.trim(), name: form.name.trim() };
-    if (editId) await base44.entities.Position.update(editId, data);
-    else await base44.entities.Position.create(data);
-    toast({ title: editId ? 'Cargo atualizado' : 'Cargo cadastrado' });
-    setForm({ code: '', name: '' }); setEditId(null); load();
+    setBusy(true);
+    try {
+      await employeeCatalog(token, { action: 'savePosition', id: editId || undefined, record: form });
+      toast({ title: editId ? 'Cargo atualizado' : 'Cargo cadastrado' });
+      setForm({ code: '', name: '' });
+      setEditId(null);
+      await load();
+    } catch (err) {
+      setError(employeeError(err, 'Não foi possível salvar o cargo.'));
+    } finally {
+      setBusy(false);
+    }
   };
 
-  const view = async (p) => {
-    setViewing(p);
-    const r = await base44.entities.Employee.filter({ position_id: p.id }, { sort: 'full_name', limit: 100 });
-    setMembers(r.items);
+  const view = async (position) => {
+    setError('');
+    try {
+      const { employees } = await searchEmployees(token, { position_id: position.id });
+      setMembers(employees);
+      setViewing(position);
+    } catch (err) {
+      setError(employeeError(err, 'Não foi possível carregar os funcionários do cargo.'));
+    }
   };
 
   return (
@@ -46,7 +67,7 @@ export default function Positions() {
         <Field label="Código"><Input className="font-mono" value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} /></Field>
         <Field label="Nome do cargo"><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
         <div className="flex gap-2">
-          <Button onClick={save}>{editId ? 'Atualizar' : 'Salvar'}</Button>
+          <Button onClick={save} disabled={busy}>{editId ? 'Atualizar' : 'Salvar'}</Button>
           {editId && <Button variant="ghost" onClick={() => { setEditId(null); setForm({ code: '', name: '' }); }}>Cancelar</Button>}
         </div>
         {error && <p className="text-sm text-destructive sm:col-span-3">{error}</p>}

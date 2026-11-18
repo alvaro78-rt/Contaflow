@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { base44 } from '@/api/base44Client';
+import { employeeCatalog, employeeError } from '@/api/employeeAdmin';
+import { useSession } from '@/lib/SessionContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -18,8 +19,18 @@ export default function Schedules() {
   const [editId, setEditId] = useState(null);
   const [error, setError] = useState('');
   const { toast } = useToast();
-  const load = () => base44.entities.WorkSchedule.filter({}, { sort: 'name', limit: 100 }).then((r) => setList(r.items));
-  useEffect(() => { load(); }, []);
+  const { session } = useSession();
+  const token = session?.token;
+  const [busy, setBusy] = useState(false);
+  const load = async () => {
+    try {
+      const { schedules } = await employeeCatalog(token);
+      setList(schedules);
+    } catch (err) {
+      setError(employeeError(err, 'Não foi possível carregar as jornadas.'));
+    }
+  };
+  useEffect(() => { load(); }, [token, session?.company_id]);
 
   const suggested = f.entry_time && f.exit_time ? (scheduledMinutes(f) * f.work_days.length) / 60 : 0;
   const toggle = (d) => setF({ ...f, work_days: f.work_days.includes(d) ? f.work_days.filter((x) => x !== d) : [...f.work_days, d].sort() });
@@ -29,10 +40,18 @@ export default function Schedules() {
     if (!f.name.trim() || !Number(f.weekly_hours) || !f.work_days.length) return setError('Informe nome, carga horária semanal e ao menos um dia de trabalho.');
     if (f.exit_time <= f.entry_time) return setError('O horário de saída deve ser depois da entrada.');
     const data = { ...f, weekly_hours: Number(f.weekly_hours) };
-    if (editId) await base44.entities.WorkSchedule.update(editId, data);
-    else await base44.entities.WorkSchedule.create(data);
-    toast({ title: 'Jornada cadastrada' });
-    setF(EMPTY); setEditId(null); load();
+    setBusy(true);
+    try {
+      await employeeCatalog(token, { action: 'saveSchedule', id: editId || undefined, record: data });
+      toast({ title: editId ? 'Jornada atualizada' : 'Jornada cadastrada' });
+      setF(EMPTY);
+      setEditId(null);
+      await load();
+    } catch (err) {
+      setError(employeeError(err, 'Não foi possível salvar a jornada.'));
+    } finally {
+      setBusy(false);
+    }
   };
 
   const t = (k, l, type = 'time') => <Field label={l}><Input type={type} value={f[k]} onChange={(e) => setF({ ...f, [k]: e.target.value })} /></Field>;
@@ -53,7 +72,7 @@ export default function Schedules() {
         <p className="text-xs text-muted-foreground">Pelos horários informados: {fmtMin(Math.max(0, scheduledMinutes(f) || 0))}h por dia · {suggested.toFixed(1)}h por semana.</p>
         {error && <p className="text-sm text-destructive">{error}</p>}
         <div className="flex gap-2">
-          <Button onClick={save}>{editId ? 'Atualizar' : 'Salvar'}</Button>
+          <Button onClick={save} disabled={busy}>{editId ? 'Atualizar' : 'Salvar'}</Button>
           {editId && <Button variant="ghost" onClick={() => { setEditId(null); setF(EMPTY); }}>Cancelar</Button>}
         </div>
       </div>
