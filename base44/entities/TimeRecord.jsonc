@@ -39,6 +39,8 @@
       "type": "string",
       "description": "Marca\u00e7\u00e3o original do leitor, nunca alterada"
     },
+    "recorded_at": { "type": "string", "description": "Instante UTC do registro gerado pelo servidor" },
+    "source": { "type": "string", "description": "Origem do registro (por exemplo, employee_web)" },
     "corrected_time": {
       "type": "string"
     },
