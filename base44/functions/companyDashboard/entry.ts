@@ -87,9 +87,9 @@ export default async function (req) {
             const row = result?.rows?.[0];
             if (!row) return null;
             return {
-              proventos: Number.isFinite(Number(row.sum_total_earnings)) ? Number(row.sum_total_earnings) : null,
-              descontos: Number.isFinite(Number(row.sum_total_deductions)) ? Number(row.sum_total_deductions) : null,
-              liquido: Number.isFinite(Number(row.sum_net_salary)) ? Number(row.sum_net_salary) : null,
+              proventos: row.sum_total_earnings != null && Number.isFinite(Number(row.sum_total_earnings)) ? Number(row.sum_total_earnings) : null,
+              descontos: row.sum_total_deductions != null && Number.isFinite(Number(row.sum_total_deductions)) ? Number(row.sum_total_deductions) : null,
+              liquido: row.sum_net_salary != null && Number.isFinite(Number(row.sum_net_salary)) ? Number(row.sum_net_salary) : null,
             };
           } catch { return null; }
         })(),
