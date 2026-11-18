@@ -28,7 +28,11 @@ export default function EmployeeTimeClock() {
 
   const records = (data?.time?.records || []).slice().sort((a, b) =>
     a.date.localeCompare(b.date) || a.original_time.localeCompare(b.original_time));
-  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Recife', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+  const dateParts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Recife', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).formatToParts(new Date());
+  const dateValue = key => dateParts.find(p => p.type === key)?.value || '';
+  const today = `${dateValue('year')}-${dateValue('month')}-${dateValue('day')}`;
   // Compare by kind rather than trusting browser clock for the actual persisted timestamp.
   const todays = records.filter(r => r.date === today);
   const orderedKinds = ['entry', 'break_start', 'break_end', 'exit'];
