@@ -16,9 +16,20 @@ export default async function (req) {
     if (admin.response) return admin.response;
     const { companyId, entities, actor } = admin;
     const action = body?.action || 'calculate';
-    const allowed = ['calculate', 'approve', 'finalize'];
+    const allowed = ['calculate', 'approve', 'finalize', 'view'];
     if (!allowed.includes(action)) return fail(400, 'acao_invalida');
     if (actor.access_role === 'gerente' && action !== 'calculate') return fail(403, 'sem_permissao');
+
+    if (action === 'view') {
+      const employee = await scopedRecord(entities.Employee, body?.employee_id, companyId);
+      if (!employee) return fail(404, 'funcionario_inexistente');
+      if (!validCompetence(body?.competence)) return fail(400, 'competencia_invalida');
+      const result = await entities.Payroll.filter({
+        company_id: companyId, employee_id: employee.id, competence: body.competence,
+      }, { limit: 2 });
+      if (result.items.length > 1) return fail(409, 'folhas_duplicadas');
+      return ok({ payroll: result.items[0] || null });
+    }
 
     if (action === 'approve' || action === 'finalize') {
       const record = await scopedRecord(entities.Payroll, body?.payroll_id, companyId);
