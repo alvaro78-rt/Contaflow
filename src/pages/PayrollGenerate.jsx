@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useSession } from '@/lib/SessionContext';
 import { base44 } from '@/api/base44Client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -9,8 +10,6 @@ import EmployeePicker from '@/components/EmployeePicker';
 import PayrollSheet from '@/components/payroll/PayrollSheet';
 import PayrollActions from '@/components/payroll/PayrollActions';
 import { currentCompetence } from '@/lib/format';
-import { buildPayroll, monthStats, paramsFromTable, validatePayrollInput } from '@/lib/payroll';
-import { loadLegalTable } from '@/lib/legalTable';
 
 export default function PayrollGenerate() {
   const [emp, setEmp] = useState(null);
@@ -21,57 +20,46 @@ export default function PayrollGenerate() {
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
 
+  const { session } = useSession();
   const process = async () => {
     if (!emp || !comp || loading) return;
     setLoading(true);
-    setMessage('');
     setProblems([]);
+    setMessage('');
     setPayroll(null);
     try {
-      const [pos, sched, recs, rubrics, existing, table] = await Promise.all([
-        emp.position_id ? base44.entities.Position.get(emp.position_id) : null,
-        emp.schedule_id ? base44.entities.WorkSchedule.get(emp.schedule_id) : null,
-        base44.entities.TimeRecord.filter({ employee_id: emp.id, date: { $gte: `${comp}-01`, $lte: `${comp}-31` } }, { limit: 500 }),
-        base44.entities.Rubric.filter({ auto_apply: true }, { limit: 100 }),
-        base44.entities.Payroll.filter({ employee_id: emp.id, competence: comp }, { limit: 1 }),
-        loadLegalTable(comp),
-      ]);
-
-      const blocked = validatePayrollInput({ employee: emp, schedule: sched, table });
-      if (blocked.length) {
-        setProblems(blocked);
-        return;
+      // Calculation and write are carried out in a validated Base44 function.
+      const response = await base44.functions.invoke('payrollService', {
+        action: 'calculate', token: session?.token, employee_id: emp.id, competence: comp,
+      });
+      if (!response.data?.ok || !response.data?.payroll) throw new Error('resposta_invalida');
+      setPayroll(response.data.payroll);
+      if (response.data.existing_final) {
+        setMessage('Esta folha já foi finalizada e não pode ser recalculada.');
+      } else {
+        toast({ title: 'Folha calculada e salva para conferência' });
       }
-
-      if (!recs?.items || !rubrics?.items || !existing?.items) {
-        throw new Error('dados_incompletos');
-      }
-      const old = existing.items[0];
-      if (old?.status === 'finalizada') {
-        setPayroll(old);
-        setMessage('Esta folha já foi finalizada e não pode ser recalculada. Exibindo o resultado registrado.');
-        return;
-      }
-
-      const stats = monthStats(recs.items, sched, comp, paramsFromTable(table));
-      const data = buildPayroll({ employee: emp, positionName: pos?.name, competence: comp, stats, rubrics: rubrics.items, table });
-      const saved = old ? await base44.entities.Payroll.update(old.id, data) : await base44.entities.Payroll.create(data);
-      if (!saved?.id && !old?.id) throw new Error('salvamento_nao_confirmado');
-      setPayroll({ ...data, id: saved?.id || old.id });
-      toast({ title: 'Folha calculada e salva para conferência', description: `Tabela legal aplicada: ${table.label}` });
     } catch (error) {
       const status = error?.response?.status ?? error?.status;
-      const code = error?.response?.data?.error ?? error?.data?.error;
-      const detail = status === 401 || status === 403
-        ? 'A consulta foi recusada pelo servidor. Verifique as permissões do módulo Folha de pagamento.'
-        : status === 404
-          ? 'Uma das rotas ou funções necessárias à folha não foi encontrada no servidor.'
-          : code === 'dados_incompletos' || error?.message === 'dados_incompletos'
-            ? 'O servidor não retornou todos os dados necessários para calcular a folha.'
-            : error?.message === 'salvamento_nao_confirmado'
-              ? 'O servidor não confirmou o salvamento. Consulte as folhas existentes antes de tentar novamente.'
-              : 'Não foi possível processar a folha. Verifique a conexão e as consultas do módulo no servidor.';
-      setProblems([detail]);
+      const data = error?.response?.data ?? error?.data;
+      if (Array.isArray(data?.problems) && data.problems.length) {
+        setProblems(data.problems);
+      } else {
+        const messages = {
+          folha_aprovada: 'Esta folha já foi aprovada. Não é permitido recalcular sem uma revisão autorizada.',
+          folhas_duplicadas: 'Existem folhas duplicadas para esta competência. Solicite revisão antes de continuar.',
+          competencia_anterior_admissao: 'A competência selecionada é anterior à admissão do funcionário.',
+          funcionario_desligado: 'O funcionário está desligado. Não é possível gerar esta folha por este fluxo.',
+          tabela_legal_incompleta: 'A tabela legal vigente está incompleta. Confira as faixas de INSS e IRRF.',
+          limite_consulta: 'Há muitos registros para esta consulta. A folha não foi calculada para evitar dados incompletos.',
+          salvamento_nao_confirmado: 'O servidor não confirmou o salvamento. Confira o histórico antes de tentar novamente.',
+        };
+        setProblems([messages[data?.error] || (
+          status === 404 ? 'Serviço de folha não encontrado. Publique a função payrollService no Base44 e atualize a versão de produção.'
+          : status === 401 || status === 403 ? 'Sessão sem permissão para processar esta folha.'
+          : 'Não foi possível processar a folha. Consulte a resposta da função payrollService no servidor.'
+        )]);
+      }
     } finally {
       setLoading(false);
     }
