@@ -68,9 +68,10 @@ export default function Companies() {
         setNotice(res.data.resumed ? 'A empresa já está na sua lista.' : 'Empresa criada. Clique em Entrar para abrir o painel.');
       } else {
         setCompanies(rows => rows?.filter(row => row.id !== company.id));
-        setNotice('Empresa excluída da lista.');
+        setNotice('Solicitação de exclusão recebida. Atualizando lista…');
       }
       await load();
+      if (action === 'delete') setNotice('Exclusão solicitada. Se a empresa reaparecer, confirme se a função manageCompany está publicada no Base44.');
     } catch (err) {
       const code = err?.data?.error ?? err?.response?.data?.error;
       if (EXPIRED.includes(code)) {
