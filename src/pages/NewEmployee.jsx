@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { employeeError, saveEmployee, SESSION_ERRORS } from '@/api/employeeAdmin';
 import { Button } from '@/components/ui/button';
@@ -29,32 +29,9 @@ export default function NewEmployee() {
   const [ok, setOk] = useState('');
   const [busy, setBusy] = useState(false);
 
-  const [ready, setReady] = useState(false);
-  const [attempt, setAttempt] = useState(0);
-  const token = session?.token;
-  const companyId = session?.company_id;
-
-  useEffect(() => {
-    let active = true;
-    setReady(false);
-    setError('');
-    saveEmployee(token, { action: 'check', expected_company_id: companyId })
-      .then(() => { if (active) setReady(true); })
-      .catch((err) => {
-        if (!active) return;
-        if (SESSION_ERRORS.includes(err.code)) {
-          logout('expired');
-          navigate('/login?expired=1', { replace: true });
-        } else {
-          setError(employeeError(err, 'Não foi possível confirmar seu acesso ao cadastro.'));
-        }
-      });
-    return () => { active = false; };
-  }, [token, companyId, attempt, logout, navigate]);
-
   const submit = async (e) => {
     e.preventDefault();
-    if (!ready || busy) return;
+    if (busy) return;
     setError('');
     setOk('');
     const cpf = onlyDigits(f.cpf);
@@ -64,13 +41,19 @@ export default function NewEmployee() {
 
     setBusy(true);
     try {
-      const { employee } = await saveEmployee(token, {
-        expected_company_id: companyId,
+      const { employee } = await saveEmployee(session.token, {
+        action: 'quick',
+        expected_company_id: session.company_id,
         full_name: f.full_name.trim(),
         cpf,
         password: f.password,
       });
-      if (!employee?.tem_acesso) throw new Error('falha');
+      // A primeira versão do cadastro confirmava a criação com o ID da empresa.
+      const legacyCreated = employee?.tem_acesso === undefined && employee?.company_id === session.company_id;
+      if (!employee?.id || employee.duplicated || !(employee.tem_acesso === true || legacyCreated)) {
+        setError('O servidor não confirmou a criação do acesso. Confira este CPF na consulta de funcionários antes de tentar novamente.');
+        return;
+      }
       // Só confirma depois que o servidor devolveu o vínculo salvo.
       setOk(`Funcionário cadastrado com sucesso. Login: ${formatCpf(cpf)} e a senha inicial definida.`);
       setF({ full_name: '', cpf: '', password: '' });
@@ -102,8 +85,7 @@ export default function NewEmployee() {
         {error && <p className="border border-destructive bg-red-50 px-3 py-2 text-sm text-destructive">{error}</p>}
         {ok && <p className="border border-emerald-600 bg-accent px-3 py-2 text-sm text-accent-foreground">{ok}</p>}
         <div className="flex gap-3">
-          <Button type="submit" disabled={busy || !ready}>{!ready && !error ? 'Verificando sessão…' : busy ? 'Salvando…' : 'Cadastrar funcionário'}</Button>
-          {!ready && error && <Button type="button" variant="outline" onClick={() => setAttempt(attempt + 1)}>Tentar novamente</Button>}
+          <Button type="submit" disabled={busy}>{busy ? 'Salvando…' : 'Cadastrar funcionário'}</Button>
           <Button variant="ghost" asChild><Link to="/funcionarios/novo">Cadastro completo</Link></Button>
         </div>
       </form>

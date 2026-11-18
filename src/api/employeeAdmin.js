@@ -1,6 +1,7 @@
 import { base44 } from '@/api/base44Client';
 
 const MESSAGES = {
+  acao_invalida: 'A função publicada não reconheceu a operação de cadastro.',
   cpf_invalido: 'CPF inválido. Confira os 11 dígitos.',
   cpf_duplicado: 'Já existe um cadastro com este CPF nesta empresa.',
   cpf_ja_tem_acesso: 'Este CPF já tem acesso criado. Cada CPF é uma única conta.',
