@@ -57,29 +57,49 @@ export default async function (req) {
     const scope = { company_id: company.id };
 
     const { Employee, Payroll } = base44.asServiceRole.entities;
+    // Indicadores independentes: uma consulta indisponível não deve derrubar todo o painel.
+    // Valores desconhecidos são null, jamais zero.
+    const safe = async (task) => {
+      try {
+        const value = await task();
+        return typeof value === 'number' && Number.isFinite(value) ? value : null;
+      } catch {
+        return null;
+      }
+    };
     const [ativos, afastados, semAcesso] = await Promise.all([
-      Employee.count({ ...scope, $or: [{ status: 'ativo' }, { status: { $exists: false } }] }),
-      Employee.count({ ...scope, status: 'afastado' }),
-      Employee.count({ ...scope, $or: [{ password_hash: { $exists: false } }, { password_hash: '' }, { password_hash: null }] }),
+      safe(() => Employee.count({ ...scope, $or: [{ status: 'ativo' }, { status: { $exists: false } }] })),
+      safe(() => Employee.count({ ...scope, status: 'afastado' })),
+      safe(() => Employee.count({ ...scope, $or: [{ password_hash: { $exists: false } }, { password_hash: '' }, { password_hash: null }] })),
     ]);
 
     let payroll = null;
     if (role !== 'gerente') {
-      const [folhas, finalizadas, agg] = await Promise.all([
-        Payroll.count({ ...scope, competence }),
-        Payroll.count({ ...scope, competence, status: 'finalizada' }),
-        Payroll.aggregate({
-          query: { ...scope, competence },
-          sum: ['total_earnings', 'total_deductions', 'net_salary'],
-        }),
+      const [folhas, finalizadas, totals] = await Promise.all([
+        safe(() => Payroll.count({ ...scope, competence })),
+        safe(() => Payroll.count({ ...scope, competence, status: 'finalizada' })),
+        (async () => {
+          try {
+            const result = await Payroll.aggregate({
+              query: { ...scope, competence },
+              sum: ['total_earnings', 'total_deductions', 'net_salary'],
+            });
+            const row = result?.rows?.[0];
+            if (!row) return null;
+            return {
+              proventos: Number.isFinite(Number(row.sum_total_earnings)) ? Number(row.sum_total_earnings) : null,
+              descontos: Number.isFinite(Number(row.sum_total_deductions)) ? Number(row.sum_total_deductions) : null,
+              liquido: Number.isFinite(Number(row.sum_net_salary)) ? Number(row.sum_net_salary) : null,
+            };
+          } catch { return null; }
+        })(),
       ]);
-      const row = agg?.rows?.[0] || {};
       payroll = {
         folhas,
         finalizadas,
-        proventos: row.sum_total_earnings || 0,
-        descontos: row.sum_total_deductions || 0,
-        liquido: row.sum_net_salary || 0,
+        proventos: totals?.proventos ?? null,
+        descontos: totals?.descontos ?? null,
+        liquido: totals?.liquido ?? null,
       };
     }
 
