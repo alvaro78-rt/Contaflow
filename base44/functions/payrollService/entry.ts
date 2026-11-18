@@ -70,6 +70,9 @@ export default async function (req) {
     if (records.items.length > 500 || records.next_cursor || rubrics.items.length > 100 || rubrics.next_cursor ||
         legal.next_cursor) return fail(409, 'limite_consulta');
 
+    // An empty attendance period must be reviewed before the app assumes absences.
+    if (!records.items.length) return fail(422, 'ponto_nao_conferido');
+
     const table = legal.items.find(t => inForce(t, competence)) || null;
     const problems = validatePayrollInput({ employee: emp, schedule, table });
     if (!position) problems.push('Cargo não encontrado na empresa. Confira o cadastro do funcionário.');
