@@ -9,11 +9,12 @@ import Field from '@/components/Field';
 import EmployeePicker from '@/components/EmployeePicker';
 import PayrollSheet from '@/components/payroll/PayrollSheet';
 import PayrollActions from '@/components/payroll/PayrollActions';
-import { currentCompetence } from '@/lib/format';
+import { competenceLabel } from '@/lib/format';
+import { lastClosedCompetence, payrollFormProblems } from '@/lib/payrollPreflight';
 
 export default function PayrollGenerate() {
   const [emp, setEmp] = useState(null);
-  const [comp, setComp] = useState(currentCompetence());
+  const [comp, setComp] = useState(() => lastClosedCompetence());
   const [payroll, setPayroll] = useState(null);
   const [payment, setPayment] = useState('');
   const [dependents, setDependents] = useState('');
@@ -34,6 +35,16 @@ export default function PayrollGenerate() {
   };
   const process = async () => {
     if (!emp || !comp || loading) return;
+    const issues = payrollFormProblems({
+      competence: comp, paymentDate: payment, taxDependents: dependents,
+      dsrExtra, dsrDiscount, reviewedInputs: reviewed,
+    });
+    if (issues.length) {
+      setProblems(issues);
+      setMessage('');
+      setPayroll(null);
+      return;
+    }
     setLoading(true);
     setProblems([]);
     setMessage('');
@@ -70,11 +81,19 @@ export default function PayrollGenerate() {
           ponto_nao_conferido: 'Não há registros de ponto nesta competência. Confira o período antes de calcular faltas e remuneração.',
           limite_consulta: 'Há muitos registros para esta consulta. A folha não foi calculada para evitar dados incompletos.',
           salvamento_nao_confirmado: 'O servidor não confirmou o salvamento. Confira o histórico antes de tentar novamente.',
+          empresa_alterada: 'A empresa aberta mudou. Volte à lista de empresas e entre novamente.',
+          sem_empresa: 'Entre em uma empresa antes de processar a folha.',
+          operacao_em_andamento: 'Outra operação deste funcionário está em andamento. Atualize e confira antes de tentar novamente.',
+          sessao_expirada: 'Sua sessão expirou. Saia e entre novamente com CPF e senha.',
+          tabela_legal_incompleta: 'A tabela legal vigente está incompleta. Confira as faixas de INSS e IRRF.',
+          situacao_invalida: 'Esta folha está em outra situação. Consulte as folhas anteriores antes de continuar.',
         };
         setProblems([messages[data?.error] || (
           status === 404 ? 'Serviço de folha não encontrado. Publique a função payrollService no Base44 e atualize a versão de produção.'
-          : status === 401 || status === 403 ? 'Sessão sem permissão para processar esta folha.'
-          : 'Não foi possível processar a folha. Consulte a resposta da função payrollService no servidor.'
+          : status === 401 || status === 403 ? 'Sessão sem permissão para processar esta folha. Entre novamente ou confira o perfil do usuário.'
+          : 'Não foi possível processar a folha (HTTP ' + (status || 'sem resposta') +
+            ', código ' + (data?.error || 'não informado') +
+            '). Verifique a função payrollService no Base44.'
         )]);
       }
     } finally {
@@ -85,6 +104,17 @@ export default function PayrollGenerate() {
   return (
     <div className="space-y-6">
       <PageHeader code="RF10 · RF12 · RF16" title="Folha de pagamento" description="Selecione a competência e o funcionário. INSS, IRRF e FGTS são calculados pela tabela legal vigente e a folha passa por conferência antes de ser finalizada." />
+      <div className="border border-border bg-card px-4 py-3 text-sm text-muted-foreground">
+        <p>Competência encerrada mais recente: <strong>{competenceLabel(lastClosedCompetence())}</strong>.
+          Para processar uma folha, confira os registros de ponto e as ausências do mês, selecione uma
+          data de pagamento, informe dependentes fiscais e os dois valores de DSR (use 0 quando não houver).
+          Depois marque a confirmação de conferência. A aprovação e a finalização são etapas separadas.</p>
+        {comp > lastClosedCompetence() && (
+          <p role="alert" className="mt-2 text-destructive">
+            A competência selecionada ainda está aberta. Não é permitido gerar folha mensal definitiva de um mês não encerrado.
+          </p>
+        )}
+      </div>
       <div className="grid gap-4 md:grid-cols-[1fr_200px_auto] md:items-end">
         <Field label="Funcionário"><EmployeePicker value={emp} onChange={(e) => { setEmp(e); resetReview(); setPayroll(null); setProblems([]); }} /></Field>
         <Field label="Competência"><Input type="month" value={comp} onChange={(e) => { setComp(e.target.value); resetReview(); setPayroll(null); setProblems([]); }} /></Field>
