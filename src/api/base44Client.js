@@ -29,7 +29,7 @@ const withCompany = (query, companyId) => ({ ...(query || {}), company_id: compa
 
 const scopeEntity = (name, entity) => new Proxy(entity, {
   get(target, prop) {
-    const value = target[prop];
+    const value = Reflect.get(target, prop);
     if (typeof value !== 'function') return value;
     const companyId = SCOPED.has(name) ? activeCompanyId() : null;
     if (!companyId) return value.bind(target);
@@ -56,7 +56,7 @@ const scopeEntity = (name, entity) => new Proxy(entity, {
 
 const scopedEntities = new Proxy(client.entities, {
   get(target, prop) {
-    const entity = target[prop];
+    const entity = Reflect.get(target, prop);
     if (!entity || typeof entity !== 'object') return entity;
     return scopeEntity(prop, entity);
   }
@@ -65,7 +65,7 @@ const scopedEntities = new Proxy(client.entities, {
 export const base44 = new Proxy(client, {
   get(target, prop) {
     if (prop === 'entities') return scopedEntities;
-    const value = target[prop];
+    const value = Reflect.get(target, prop);
     return typeof value === 'function' ? value.bind(target) : value;
   }
 });
