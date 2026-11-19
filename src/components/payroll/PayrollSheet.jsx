@@ -4,7 +4,7 @@ import { fmtMin } from '@/lib/payroll';
 
 export const STATUS_LABEL = { rascunho: 'Aguardando conferência', aprovada: 'Aprovada', finalizada: 'Finalizada' };
 
-function Block({ title, items = [], total, totalLabel }) {
+function Block({ title, items = [], total = undefined, totalLabel = undefined }) {
   return (
     <div className="border border-border bg-card">
       <p className="border-b border-border px-4 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{title}</p>
