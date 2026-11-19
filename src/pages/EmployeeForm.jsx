@@ -17,7 +17,7 @@ import { cpfMessage, isValidCpf } from '@/lib/cpf';
 
 const EMPTY = { full_name: '', cpf: '', rg: '', pis: '', photo_url: '', marital_status: '', birth_date: '', zip_code: '', address: '', address_number: '', address_complement: '', neighborhood: '', state: '', dependents: [], admission_date: '', position_id: '', contract_type: 'CLT', work_regime: 'Integral', schedule_id: '', base_salary: '', weekly_hours: '', bank_name: '', bank_agency: '', bank_account: '', pix: '', username: '', access_role: 'funcionario', department: '', status: 'ativo', status_reason: '', status_date: '' };
 
-function Pick({ value, onChange, options, placeholder }) {
+function Pick({ value, onChange, options, placeholder = undefined }) {
   return (
     <Select value={value || undefined} onValueChange={onChange}>
       <SelectTrigger><SelectValue placeholder={placeholder} /></SelectTrigger>
@@ -77,7 +77,7 @@ export default function EmployeeForm() {
     const file = e.target.files?.[0];
     if (!file) return;
     try {
-      const { file_url } = await base44.integrations.Core.UploadPublicFile({ file });
+      const { file_url } = await base44.integrations.Core.UploadFile({ file });
       setF((current) => ({ ...current, photo_url: file_url }));
     } catch {
       setErrors(['Não foi possível enviar a foto.']);
