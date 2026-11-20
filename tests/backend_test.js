@@ -474,3 +474,26 @@ Deno.test('limites de login e ativação são separados e o sucesso limpa o cont
   clearAuthAttempts('login', cpf);
   clearAuthAttempts('activate', cpf);
 });
+
+Deno.test('login por CPF limita erros e libera acesso com senha correta depois da espera', async () => {
+  const cpf = '52998224725';
+  const db = fixture();
+  db.Employee[0].cpf = cpf;
+  db.Employee[0].password_hash = await newPasswordHash('senha-correta-de-teste');
+  clearAuthAttempts('login', cpf);
+  for (let i = 0; i < 5; i++) {
+    const result = await call(auth, 'login', { cpf, password: 'senha-incorreta' });
+    assert.equal(result.status, 401);
+  }
+  const blocked = await call(auth, 'login', { cpf, password: 'senha-correta-de-teste' });
+  assert.equal(blocked.status, 429);
+  assert.equal(blocked.error, 'muitas_tentativas');
+  assert.equal(db.AuthSession.some((s) => s.employee_id === 'worker' && s.token !== 'worker'), false);
+  clearAuthAttempts('login', cpf);
+  const success = await call(auth, 'login', { cpf, password: 'senha-correta-de-teste' });
+  assert.equal(success.status, 200);
+  assert.equal(success.ok, true);
+  assert.equal(success.employee.id, 'worker');
+  assert.equal(db.AuthSession.some((s) => s.employee_id === 'worker' && s.token === success.token), true);
+  clearAuthAttempts('login', cpf);
+});
