@@ -9,42 +9,20 @@ import Field from '@/components/Field';
 import EmployeePicker from '@/components/EmployeePicker';
 import PayrollSheet from '@/components/payroll/PayrollSheet';
 import PayrollActions from '@/components/payroll/PayrollActions';
-import { competenceLabel } from '@/lib/format';
-import { lastClosedCompetence, payrollFormProblems } from '@/lib/payrollPreflight';
+import { lastClosedCompetence } from '@/lib/payrollPreflight';
 
 export default function PayrollGenerate() {
   const [emp, setEmp] = useState(null);
   const [comp, setComp] = useState(() => lastClosedCompetence());
   const [payroll, setPayroll] = useState(null);
-  const [payment, setPayment] = useState('');
-  const [dependents, setDependents] = useState('');
-  const [paidDays, setPaidDays] = useState('');
-  const [unpaidDays, setUnpaidDays] = useState('');
-  const [dsrExtra, setDsrExtra] = useState('');
-  const [dsrDiscount, setDsrDiscount] = useState('');
-  const [reviewed, setReviewed] = useState(false);
   const [message, setMessage] = useState('');
   const [problems, setProblems] = useState([]);
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
 
   const { session } = useSession();
-  const resetReview = () => {
-    setPayment(''); setDependents(''); setPaidDays(''); setUnpaidDays('');
-    setDsrExtra(''); setDsrDiscount(''); setReviewed(false);
-  };
   const process = async () => {
     if (!emp || !comp || loading) return;
-    const issues = payrollFormProblems({
-      competence: comp, paymentDate: payment, taxDependents: dependents,
-      dsrExtra, dsrDiscount, reviewedInputs: reviewed,
-    });
-    if (issues.length) {
-      setProblems(issues);
-      setMessage('');
-      setPayroll(null);
-      return;
-    }
     setLoading(true);
     setProblems([]);
     setMessage('');
@@ -52,11 +30,12 @@ export default function PayrollGenerate() {
     try {
       // Calculation and write are carried out in a validated Base44 function.
       const response = await base44.functions.invoke('payrollService', {
-        action: 'calculate', expected_company_id: session.company_id, payment_date: payment,
-        tax_dependents: dependents === '' ? null : Number(dependents), reviewed_inputs: reviewed,
-        unpaid_days: unpaidDays.split(/[,\s]+/).filter(Boolean),
-        dsr_extra: dsrExtra === '' ? null : Number(dsrExtra), dsr_discount: dsrDiscount === '' ? null : Number(dsrDiscount),
-        paid_days: paidDays.split(/[,\s]+/).filter(Boolean), token: session?.token, employee_id: emp.id, competence: comp,
+        action: 'calculate',
+        automatic: true,
+        expected_company_id: session?.company_id,
+        token: session?.token,
+        employee_id: emp.id,
+        competence: comp,
       });
       if (!response.data?.ok || !response.data?.payroll) throw new Error('resposta_invalida');
       setPayroll(response.data.payroll);
@@ -102,31 +81,11 @@ export default function PayrollGenerate() {
 
   return (
     <div className="space-y-6">
-      <PageHeader code="RF10 · RF12 · RF16" title="Folha de pagamento" description="Selecione a competência e o funcionário. INSS, IRRF e FGTS são calculados pela tabela legal vigente e a folha passa por conferência antes de ser finalizada." />
-      <div className="border border-border bg-card px-4 py-3 text-sm text-muted-foreground">
-        <p>Competência encerrada mais recente: <strong>{competenceLabel(lastClosedCompetence())}</strong>.
-          Para processar uma folha, confira os registros de ponto e as ausências do mês, selecione uma
-          data de pagamento, informe dependentes fiscais e os dois valores de DSR (use 0 quando não houver).
-          Depois marque a confirmação de conferência. A aprovação e a finalização são etapas separadas.</p>
-        {comp > lastClosedCompetence() && (
-          <p role="alert" className="mt-2 text-destructive">
-            A competência selecionada ainda está aberta. Não é permitido gerar folha mensal definitiva de um mês não encerrado.
-          </p>
-        )}
-      </div>
+      <PageHeader code="RF10 · RF12 · RF16" title="Folha de pagamento" description="Selecione o funcionário e processe a competência. O sistema consulta o cadastro, o ponto, as rubricas e a tabela legal; eventuais pendências aparecem abaixo." />
       <div className="grid gap-4 md:grid-cols-[1fr_200px_auto] md:items-end">
-        <Field label="Funcionário"><EmployeePicker value={emp} onChange={(e) => { setEmp(e); resetReview(); setPayroll(null); setProblems([]); }} /></Field>
-        <Field label="Competência"><Input type="month" value={comp} onChange={(e) => { setComp(e.target.value); resetReview(); setPayroll(null); setProblems([]); }} /></Field>
+        <Field label="Funcionário"><EmployeePicker value={emp} onChange={(e) => { setEmp(e); setPayroll(null); setProblems([]); }} /></Field>
+        <Field label="Competência"><Input type="month" value={comp} onChange={(e) => { setComp(e.target.value); setPayroll(null); setProblems([]); }} /></Field>
         <Button disabled={!emp || !comp || loading} onClick={process}>{loading ? 'Processando…' : 'Processar folha'}</Button>
-      </div>
-      <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="Data do pagamento"><Input type="date" value={payment} onChange={e => {setPayment(e.target.value); setReviewed(false);}} /></Field>
-        <Field label="Dependentes fiscais confirmados"><Input type="number" min="0" max="99" value={dependents} onChange={e => {setDependents(e.target.value); setReviewed(false);}} /></Field>
-        <Field label="Feriados e folgas remuneradas sem ponto (AAAA-MM-DD, separados por vírgula)"><Input value={paidDays} onChange={e => {setPaidDays(e.target.value); setReviewed(false);}} /></Field>
-        <Field label="Faltas descontáveis confirmadas (AAAA-MM-DD, separadas por vírgula)"><Input value={unpaidDays} onChange={e => {setUnpaidDays(e.target.value);setReviewed(false);}} /></Field>
-        <Field label="Reflexo de horas extras no DSR (R$, inclusive zero)"><Input type="number" min="0" step=".01" value={dsrExtra} onChange={e => {setDsrExtra(e.target.value);setReviewed(false);}} /></Field>
-        <Field label="Desconto de DSR (R$, inclusive zero)"><Input type="number" min="0" step=".01" value={dsrDiscount} onChange={e => {setDsrDiscount(e.target.value);setReviewed(false);}} /></Field>
-        <label><input type="checkbox" checked={reviewed} onChange={e => setReviewed(e.target.checked)} /> Conferi ponto, salário e rubricas da competência. É uma folha mensal integral, com um vínculo, sem outros pagamentos tributáveis no mês, compensação de horas, trabalho em feriados, férias, afastamentos, deduções adicionais ou verbas pendentes.</label>
       </div>
       {problems.length > 0 && (
         <ul className="border border-destructive bg-red-50 px-4 py-3 text-sm text-destructive">
