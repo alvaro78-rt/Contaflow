@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { attendance, fixture } from './fixture.js';
 import { newPasswordHash } from '../base44/shared/passwords.ts';
 import authCpf from '../base44/functions/authCpf/entry.ts';
+import createCompany from '../base44/functions/createCompany/entry.ts';
+import manageCompany from '../base44/functions/manageCompany/entry.ts';
 import enterCompany from '../base44/functions/enterCompany/entry.ts';
 import listCompanies from '../base44/functions/listCompanies/entry.ts';
 import listEmployees from '../base44/functions/listEmployees/entry.ts';
@@ -9,7 +11,7 @@ import payrollService from '../base44/functions/payrollService/entry.ts';
 import employeePortal from '../base44/functions/employeePortal/entry.ts';
 import { EXPECTED_PAYROLL_RELEASE } from '../src/lib/payrollServiceVersion.js';
 
-Deno.test('integração HTTP local: login, empresa, permissões, folha e contracheque', async () => {
+Deno.test('integração HTTP local: login, criação e seleção de empresa, funcionários, folha e contracheque', async () => {
   const db = fixture();
   const cpf = '52998224725';
   const password = 'senha-ficticia-exclusiva-deste-teste';
@@ -19,7 +21,9 @@ Deno.test('integração HTTP local: login, empresa, permissões, folha e contrac
     password_hash: await newPasswordHash(password),
   });
   attendance(db);
-  const routes = { authCpf, enterCompany, listCompanies, listEmployees, payrollService, employeePortal };
+  const routes = {
+    authCpf, createCompany, manageCompany, enterCompany, listCompanies, listEmployees, payrollService, employeePortal,
+  };
   const server = Deno.serve({ hostname: '127.0.0.1', port: 0, onListen() {} }, (request) => {
     const name = new URL(request.url).pathname.split('/').at(-1);
     return Object.hasOwn(routes, name) ? routes[name](request) : new Response(null, { status: 404 });
@@ -42,6 +46,23 @@ Deno.test('integração HTTP local: login, empresa, permissões, folha e contrac
     const { token } = await invoke('authCpf', { action: 'login', cpf, password });
     const { companies } = await invoke('listCompanies', { token });
     assert.deepEqual(companies.map(({ id }) => id).sort(), ['A', 'B']);
+    const companyInput = {
+      name: 'Empresa fictícia', owner_name: 'Pessoa de teste', owner_cpf: '15350946056', owner_password: password,
+    };
+    await invoke('createCompany', { ...companyInput, token: 'worker' }, 403);
+    const { company } = await invoke('createCompany', { ...companyInput, token });
+    const resumed = await invoke('createCompany', { ...companyInput, token });
+    assert.equal(resumed.company.id, company.id);
+    const { token: ownerToken } = await invoke('authCpf', {
+      action: 'login', cpf: companyInput.owner_cpf, password,
+    });
+    const ownerEmployees = await invoke('listEmployees', { token: ownerToken });
+    assert.ok(ownerEmployees.employees.every(({ id }) => id !== 'worker' && id !== 'other'));
+    db.Company.push({ id: 'inactive', status: 'inativa' });
+    await invoke('enterCompany', { token, company_id: 'inactive' }, 403);
+    await invoke('manageCompany', { action: 'restore', id: 'inactive', token: 'worker' }, 403);
+    await invoke('manageCompany', { action: 'restore', id: 'inactive', token });
+    await invoke('enterCompany', { token, company_id: 'inactive' });
     await invoke('enterCompany', { token, company_id: 'A' });
     const { employees } = await invoke('listEmployees', { token });
     assert.ok(employees.some(({ id }) => id === 'worker'));
