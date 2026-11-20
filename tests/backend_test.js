@@ -264,3 +264,40 @@ Deno.test('regras globais exigem mestre e dados de outra empresa ficam fora da c
   assert.equal((await call(rh, 'history', { expected_company_id: 'B' }, 'master')).status, 409);
   assert.equal((await call(rh, 'history', {}, 'master')).status, 200);
 });
+Deno.test('modo automático usa dados salvos e gera somente rascunho com referência provisória', async () => {
+  const db = fixture();
+  db.Employee[0].dependents = [];
+  attendance(db);
+  for (const [kind, original_time] of [
+    ['entry', '08:00'], ['break_start', '12:00'], ['break_end', '13:00'], ['exit', '17:00'],
+  ]) {
+    db.TimeRecord.push({ company_id: 'A', employee_id: 'worker', date: '2026-01-01', kind, original_time });
+  }
+  const res = await call(payroll, 'calculate', {
+    competence: '2026-01', employee_id: 'worker', automatic: true,
+  });
+  assert.equal(res.status, 200);
+  assert.equal(res.payroll.status, 'rascunho');
+  assert.equal(res.payroll.input_review.source, 'automatic');
+  assert.equal(res.payroll.input_review.tax_dependents, 0);
+  assert.equal(res.payroll.input_review.payment_date, '');
+  assert.equal(res.payroll.input_review.payment_date_confirmed, false);
+  assert.equal((await call(payroll, 'approve', { payroll_id: res.payroll.id })).status, 422);
+});
+
+Deno.test('modo automático não presume dependentes, folgas nem marcações ausentes', async () => {
+  const db = fixture();
+  attendance(db);
+  const blank = await call(payroll, 'calculate', {
+    competence: '2026-01', employee_id: 'worker', automatic: true,
+  });
+  assert.equal(blank.status, 422);
+  assert.equal(db.Payroll.length, 0);
+  db.Employee[0].dependents = [];
+  const unclassified = await call(payroll, 'calculate', {
+    competence: '2026-01', employee_id: 'worker', automatic: true,
+  });
+  assert.equal(unclassified.status, 422);
+  assert.ok(unclassified.problems?.some((p) => p.includes('2026-01-01')));
+  assert.equal(db.Payroll.length, 0);
+});
