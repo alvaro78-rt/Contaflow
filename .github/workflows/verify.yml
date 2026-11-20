@@ -1,0 +1,42 @@
+name: Verificar ContaFlow
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Testes do frontend
+        run: node --test tests/*.test.js
+      - name: Lint
+        run: npm run lint
+      - name: Tipagem
+        run: npm run typecheck
+      - name: Build
+        run: npm run build
+
+  backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Testes de backend com entidades fictícias em memória
+        run: deno test --no-config --no-check --no-lock --node-modules-dir=none --import-map=tests/import-map.json tests/backend_test.js
