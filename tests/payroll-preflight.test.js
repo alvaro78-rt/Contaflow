@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { lastClosedCompetence, payrollFormProblems } from '../src/lib/payrollPreflight.js';
+import { lastClosedCompetence, payrollFormProblems, suggestedCompetence, competenceAdmissionProblem } from '../src/lib/payrollPreflight.js';
 
 const now = new Date('2026-11-19T21:00:00Z');
 const correct = {
@@ -48,4 +48,17 @@ test('rejeita pagamento anterior ao fechamento, data impossível e DSR fracionad
   }, now);
   assert.equal(problems.length, 3);
   assert.match(payrollFormProblems({ ...correct, paymentDate: '2026-02-31' }, now).join(' '), /data prevista/);
+});
+
+test('seleciona a primeira competência possível sem aceitar mês ainda aberto', () => {
+  assert.equal(suggestedCompetence('2026-08', '2026-10-16', '2026-10'), '2026-10');
+  assert.equal(suggestedCompetence('2026-10', '2026-11-10', '2026-10'), '2026-10');
+  assert.equal(suggestedCompetence('2026-10', '2026-07-09', '2026-10'), '2026-10');
+});
+
+test('informa admissão posterior ao mês e permite o mês de admissão encerrado', () => {
+  assert.match(competenceAdmissionProblem('2026-10', '2026-11-10', '2026-10'), /Ainda não existe/);
+  assert.equal(competenceAdmissionProblem('2026-10', '2026-10-16', '2026-10'), '');
+  assert.match(competenceAdmissionProblem('2026-09', '2026-10-16', '2026-10'), /2026-10/);
+  assert.match(competenceAdmissionProblem('2026-11', '2026-10-16', '2026-10'), /não está encerrada/);
 });
