@@ -8,6 +8,7 @@ import { hashPassword } from '../base44/shared/authHelpers.ts';
 import { calcInss, calcIrrf } from '../base44/shared/payrollCalculation.js';
 import { newPasswordHash, verifyPassword } from '../base44/shared/passwords.ts';
 import { authorizeOwner, checkRecoveryKey, attemptRecovery } from '../base44/shared/masterSwap.ts';
+import { consumeAuthAttempt, clearAuthAttempts } from '../base44/shared/loginThrottle.js';
 
 async function call(fn, action, fields = {}, token = 'rh') {
   const req = new Request('http://local.test/', {
@@ -445,4 +446,31 @@ Deno.test('recuperação inválida nunca consulta nem modifica a base de dados',
   });
   assert.equal(wrongKey.status, 403);
   assert.equal(accesses, 0);
+});
+
+Deno.test('limite de tentativas pré-login responde 429 e expira sem alterar registros', () => {
+  const cpf = '81594637205';
+  clearAuthAttempts('login', cpf);
+  const initial = 1_800_000_000_000;
+  for (let i = 0; i < 5; i++) {
+    assert.deepEqual(consumeAuthAttempt('login', cpf, initial + i), {
+      allowed: true, retryAfterSeconds: 0,
+    });
+  }
+  const blocked = consumeAuthAttempt('login', cpf, initial + 6);
+  assert.equal(blocked.allowed, false);
+  assert.ok(blocked.retryAfterSeconds >= 25 && blocked.retryAfterSeconds <= 30);
+  assert.equal(consumeAuthAttempt('login', cpf, initial + 10).allowed, false);
+  assert.equal(consumeAuthAttempt('login', cpf, initial + 11 * 60_000).allowed, true);
+  clearAuthAttempts('login', cpf);
+});
+
+Deno.test('limites de login e ativação são separados e o sucesso limpa o contador', () => {
+  const cpf = '81594637206';
+  for (let i = 0; i < 6; i++) consumeAuthAttempt('login', cpf, 1_800_000_200_000 + i);
+  assert.equal(consumeAuthAttempt('activate', cpf, 1_800_000_200_020).allowed, true);
+  clearAuthAttempts('login', cpf);
+  assert.equal(consumeAuthAttempt('login', cpf, 1_800_000_200_030).allowed, true);
+  clearAuthAttempts('login', cpf);
+  clearAuthAttempts('activate', cpf);
 });
