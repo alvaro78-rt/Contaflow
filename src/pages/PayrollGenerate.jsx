@@ -20,10 +20,40 @@ export default function PayrollGenerate() {
   const [message, setMessage] = useState('');
   const [problems, setProblems] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [checkingServer, setCheckingServer] = useState(false);
+  const [serverStatus, setServerStatus] = useState('');
   const { toast } = useToast();
 
   const { session } = useSession();
   const admissionProblem = emp ? competenceAdmissionProblem(comp, emp.admission_date) : '';
+  // Preflight autenticado e SOMENTE leitura. O cálculo não deve ser enviado
+  // para um bundle antigo ou desconhecido, evitando alterações incertas.
+  const checkBackend = async () => {
+    setCheckingServer(true);
+    setServerStatus('');
+    try {
+      const response = await base44.functions.invoke('payrollService', {
+        action: 'release', token: session?.token,
+      });
+      const state = classifyPayrollRelease(response);
+      const label = state === 'current'
+        ? 'Servidor de folha atualizado e acessível. Verificação sem alteração de dados.'
+        : state === 'outdated'
+          ? 'Versão antiga do backend detectada. Publique payrollService v2 no Base44 antes de processar.'
+          : 'Não foi possível confirmar a versão do backend. Não processe a folha.';
+      setServerStatus(label);
+      return state === 'current';
+    } catch (error) {
+      const state = classifyPayrollRelease(null, error);
+      const status = error?.response?.status ?? error?.status;
+      setServerStatus(state === 'outdated'
+        ? 'Backend antigo: a verificação de versão não está disponível. Publique payrollService v2.'
+        : 'Backend não confirmado (HTTP ' + (Number.isInteger(status) ? status : 'indisponível') + '). Não processe a folha.');
+      return false;
+    } finally {
+      setCheckingServer(false);
+    }
+  };
   const process = async () => {
     if (!emp || !comp || loading || admissionProblem) return;
     setLoading(true);
@@ -31,6 +61,10 @@ export default function PayrollGenerate() {
     setMessage('');
     setPayroll(null);
     try {
+      if (!await checkBackend()) {
+        setProblems(['Processamento bloqueado: não foi possível validar a versão da função payrollService. Nenhuma folha foi gerada por esta tentativa.']);
+        return;
+      }
       // Calculation and write are carried out in a validated Base44 function.
       const response = await base44.functions.invoke('payrollService', {
         action: 'calculate',
@@ -112,10 +146,16 @@ export default function PayrollGenerate() {
   return (
     <div className="space-y-6">
       <PageHeader code="RF10 · RF12 · RF16" title="Folha de pagamento" description="Selecione o funcionário e processe a competência. O sistema consulta o cadastro, o ponto, as rubricas e a tabela legal; eventuais pendências aparecem abaixo." />
+      <div className="flex flex-wrap items-center gap-3 rounded-lg border border-border bg-card px-4 py-3">
+        <Button size="sm" variant="outline" type="button" disabled={loading || checkingServer} onClick={checkBackend}>
+          {checkingServer ? 'Verificando servidor…' : 'Verificar backend (sem gravar)'}
+        </Button>
+        <p role="status" className="text-xs text-muted-foreground">{serverStatus || 'Confirme a versão ativa do processamento antes de gerar a folha.'}</p>
+      </div>
       <div className="grid gap-4 md:grid-cols-[1fr_200px_auto] md:items-end">
         <Field label="Funcionário"><EmployeePicker value={emp} onChange={(e) => { setEmp(e); if (e) setComp((old) => suggestedCompetence(old, e.admission_date)); setPayroll(null); setProblems([]); }} /></Field>
         <Field label="Competência"><Input type="month" value={comp} onChange={(e) => { setComp(e.target.value); setPayroll(null); setProblems([]); }} /></Field>
-        <Button disabled={!emp || !comp || loading || Boolean(admissionProblem)} onClick={process}>{loading ? 'Processando…' : 'Processar folha'}</Button>
+        <Button disabled={!emp || !comp || loading || checkingServer || Boolean(admissionProblem)} onClick={process}>{loading ? 'Processando…' : 'Processar folha'}</Button>
       </div>
       {admissionProblem && <p role="alert" className="text-sm text-destructive">{admissionProblem}</p>}
       {problems.length > 0 && (
