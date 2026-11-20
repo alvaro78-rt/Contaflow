@@ -48,7 +48,7 @@ export default async function (req) {
         )),
       })),
     });
-  } catch (error) {
-    return Response.json({ error: 'falha_servidor', message: error.message }, { status: 500 });
+  } catch {
+    return Response.json({ error: 'falha_servidor' }, { status: 500 });
   }
 }
