@@ -4,6 +4,7 @@ import portal from '../base44/functions/employeePortal/entry.ts';
 import payroll from '../base44/functions/payrollService/entry.ts';
 import rh from '../base44/functions/rhService/entry.ts';
 import auth from '../base44/functions/authCpf/entry.ts';
+import listCompanies from '../base44/functions/listCompanies/entry.ts';
 import { hashPassword } from '../base44/shared/authHelpers.ts';
 import { calcInss, calcIrrf } from '../base44/shared/payrollCalculation.js';
 import { newPasswordHash, verifyPassword } from '../base44/shared/passwords.ts';
@@ -496,4 +497,31 @@ Deno.test('login por CPF limita erros e libera acesso com senha correta depois d
   assert.equal(success.employee.id, 'worker');
   assert.equal(db.AuthSession.some((s) => s.employee_id === 'worker' && s.token === success.token), true);
   clearAuthAttempts('login', cpf);
+});
+
+Deno.test('lista de empresas preserva autorizacao mestre e nao grava nem remove dados', async () => {
+  const db = fixture();
+  db.Employee.push({ id: 'master', full_name: 'Conta Mestre', access_role: 'master', cpf: '12345678909' });
+  db.AuthSession.push({
+    id: 'masterSession', employee_id: 'master', token: 'master',
+    expires_at: '2099-01-01T00:00:00.000Z',
+  });
+  db.Company[0].name = 'Empresa A';
+  db.Company[1].name = 'Empresa B';
+  db.Company[1].status = 'inativa';
+  const original = structuredClone(db.Company);
+
+  const all = await call(listCompanies, '', { include_inactive: true }, 'master');
+  assert.equal(all.status, 200);
+  assert.deepEqual(all.companies.map(c => c.name), ['Empresa A', 'Empresa B']);
+  assert.equal(all.companies.find(c => c.name === 'Empresa B').status, 'inativa');
+
+  const active = await call(listCompanies, '', { include_inactive: false }, 'master');
+  assert.equal(active.status, 200);
+  assert.deepEqual(active.companies.map(c => c.name), ['Empresa A']);
+  assert.deepEqual(db.Company, original);
+
+  const denied = await call(listCompanies, '', {}, 'worker');
+  assert.equal(denied.status, 403);
+  assert.equal(denied.error, 'somente_mestre');
 });
