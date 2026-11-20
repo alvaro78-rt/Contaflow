@@ -1,7 +1,7 @@
 // Narrow, in-memory implementation of the SDK operations used by the handlers.
 // A test request never needs an app ID, service token, or network access.
 let database;
-function matches(row, query) {
+export function matches(row, query) {
   return Object.entries(query).every(([key, expected]) => {
     if (key === '$or') return expected.some((q) => matches(row, q));
     if (key === '$and') return expected.every((q) => matches(row, q));

@@ -25,6 +25,8 @@ jobs:
         run: npm audit --audit-level=high
       - name: Testes do frontend
         run: node --test tests/*.test.js
+      - name: Integração HTTP da folha com SQLite e dados fictícios
+        run: node --test tests/homologacao/folha.js
       - name: Lint
         run: npm run lint
       - name: Tipagem
