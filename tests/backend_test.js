@@ -268,17 +268,13 @@ Deno.test('modo automático usa dados salvos e gera somente rascunho com referê
   const db = fixture();
   db.Employee[0].dependents = [];
   attendance(db);
-  for (const [kind, original_time] of [
-    ['entry', '08:00'], ['break_start', '12:00'], ['break_end', '13:00'], ['exit', '17:00'],
-  ]) {
-    db.TimeRecord.push({ company_id: 'A', employee_id: 'worker', date: '2026-01-01', kind, original_time });
-  }
   const res = await call(payroll, 'calculate', {
     competence: '2026-01', employee_id: 'worker', automatic: true,
   });
   assert.equal(res.status, 200);
   assert.equal(res.payroll.status, 'rascunho');
   assert.equal(res.payroll.input_review.source, 'automatic');
+  assert.deepEqual(res.payroll.input_review.paid_days, ['2026-01-01']);
   assert.equal(res.payroll.input_review.tax_dependents, 0);
   assert.equal(res.payroll.input_review.payment_date, '');
   assert.equal(res.payroll.input_review.payment_date_confirmed, false);
@@ -294,10 +290,46 @@ Deno.test('modo automático não presume dependentes, folgas nem marcações aus
   assert.equal(blank.status, 422);
   assert.equal(db.Payroll.length, 0);
   db.Employee[0].dependents = [];
+  db.TimeRecord.splice(0, 4); // Jan 2 is an ordinary workday, not a national holiday
   const unclassified = await call(payroll, 'calculate', {
     competence: '2026-01', employee_id: 'worker', automatic: true,
   });
   assert.equal(unclassified.status, 422);
-  assert.ok(unclassified.problems?.some((p) => p.includes('2026-01-01')));
+  assert.ok(unclassified.problems?.some((p) => p.includes('2026-01-02')));
+  assert.equal(db.Payroll.length, 0);
+});
+
+Deno.test('modo automático reconhece feriado nacional de outubro sem tratar como falta', async () => {
+  const db = fixture();
+  db.Employee[0].dependents = [];
+  for (let day = 1; day <= 31; day++) {
+    const date = '2026-10-' + String(day).padStart(2, '0');
+    if ([0, 6].includes(new Date(date).getUTCDay()) || date === '2026-10-12') continue;
+    for (const [kind, original_time] of [
+      ['entry', '08:00'], ['break_start', '12:00'],
+      ['break_end', '13:00'], ['exit', '17:00'],
+    ]) db.TimeRecord.push({ company_id: 'A', employee_id: 'worker', date, kind, original_time });
+  }
+  const res = await call(payroll, 'calculate', {
+    competence: '2026-10', employee_id: 'worker', automatic: true,
+  });
+  assert.equal(res.status, 200);
+  assert.deepEqual(res.payroll.input_review.paid_days, ['2026-10-12']);
+  assert.equal(res.payroll.time_summary.absences, 0);
+});
+
+Deno.test('modo automático não calcula como jornada comum trabalho em feriado nacional', async () => {
+  const db = fixture();
+  db.Employee[0].dependents = [];
+  attendance(db);
+  for (const [kind, original_time] of [
+    ['entry', '08:00'], ['break_start', '12:00'],
+    ['break_end', '13:00'], ['exit', '17:00'],
+  ]) db.TimeRecord.push({ company_id: 'A', employee_id: 'worker', date: '2026-01-01', kind, original_time });
+  const res = await call(payroll, 'calculate', {
+    competence: '2026-01', employee_id: 'worker', automatic: true,
+  });
+  assert.equal(res.status, 422);
+  assert.ok(res.problems?.some((p) => p.includes('feriado nacional')));
   assert.equal(db.Payroll.length, 0);
 });
