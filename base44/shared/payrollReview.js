@@ -28,7 +28,7 @@ export function verifiedTable(table, competence, payment) {
     Number.isFinite(table.absence_divisor) && table.absence_divisor > 0;
 }
 
-export function reviewAttendance(records, schedule, competence, paidDays, unpaidDays, tolerance = 5) {
+export function reviewAttendance(records, schedule, competence, paidDays, unpaidDays, tolerance = 5, admissionDate = '') {
   const problems = [];
   const stats = { worked: 0, late: 0, overtime: 0, absences: 0 };
   if (
@@ -46,10 +46,12 @@ export function reviewAttendance(records, schedule, competence, paidDays, unpaid
   if (![paidDays, unpaidDays].every((list) => Array.isArray(list) && list.length <= 31)) {
     return { problems: ['Confira as datas de folga e faltas descontáveis.'] };
   }
+  const firstDate = validDate(admissionDate) && admissionDate.startsWith(competence + '-')
+    ? admissionDate : competence + '-01';
   const classified = [...paidDays, ...unpaidDays];
   if (
     new Set(classified).size !== classified.length || classified.some((d) =>
-      !validDate(d) ||
+      !validDate(d) || d < firstDate ||
       !d.startsWith(competence + '-') || !schedule.work_days.includes(new Date(d).getUTCDay())
     )
   ) {
@@ -58,7 +60,7 @@ export function reviewAttendance(records, schedule, competence, paidDays, unpaid
   stats.absences = unpaidDays.length;
   const days = new Map();
   for (const row of records) {
-    if (!validDate(row.date) || !row.date.startsWith(competence + '-')) {
+    if (!validDate(row.date) || !row.date.startsWith(competence + '-') || row.date < firstDate) {
       return { problems: ['Data de ponto inválida.'] };
     }
     if (!days.has(row.date)) days.set(row.date, []);
@@ -109,7 +111,8 @@ export function reviewAttendance(records, schedule, competence, paidDays, unpaid
   for (let day = 1; day <= end; day++) {
     const date = competence + '-' + String(day).padStart(2, '0');
     if (
-      schedule.work_days.includes(new Date(date).getUTCDay()) && !days.has(date) && !classified.includes(date)
+      date >= firstDate && schedule.work_days.includes(new Date(date).getUTCDay()) &&
+      !days.has(date) && !classified.includes(date)
     ) {
       problems.push('Dia de jornada sem classificação: ' + date + '.');
     }
