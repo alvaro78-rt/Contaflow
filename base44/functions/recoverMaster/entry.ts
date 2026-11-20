@@ -75,7 +75,8 @@ export default async function (req) {
     });
 
     return Response.json(result.body, { status: result.status });
-  } catch (error) {
-    return Response.json({ error: 'falha_servidor', message: error.message }, { status: 500 });
+  } catch {
+    // Never expose internal exceptions or secret configuration details to browsers.
+    return Response.json({ error: 'falha_servidor' }, { status: 500 });
   }
 }
