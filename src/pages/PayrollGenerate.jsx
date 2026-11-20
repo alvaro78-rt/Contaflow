@@ -11,6 +11,7 @@ import PayrollSheet from '@/components/payroll/PayrollSheet';
 import PayrollActions from '@/components/payroll/PayrollActions';
 import { lastClosedCompetence, suggestedCompetence, competenceAdmissionProblem } from '@/lib/payrollPreflight';
 import { classifyPayrollRelease } from '@/lib/payrollServiceVersion';
+import { describePayrollServerFailure } from '@/lib/payrollFailure';
 
 export default function PayrollGenerate() {
   const [emp, setEmp] = useState(null);
@@ -68,6 +69,13 @@ export default function PayrollGenerate() {
           : runtime === 'current'
             ? 'O Base44 retornou uma resposta incompatível com a versão atual da função. Pode haver diferentes versões em execução. Encaminhe o erro e a rota ao suporte Base44; não modifique os registros de ponto.'
             : 'O Base44 devolveu ponto_nao_conferido, mas não foi possível identificar a versão do servidor. Confira a publicação de payrollService sem alterar os pontos cadastrados.']);
+      } else if (describePayrollServerFailure(data, status)) {
+        const diagnostic = describePayrollServerFailure(data, status);
+        setProblems([
+          diagnostic.message,
+          `Diagnóstico técnico: payrollService · HTTP 500 · etapa ${diagnostic.stage}.`,
+          'Nenhum dado foi apagado por esta tela. Se a etapa envolver gravação, confira o histórico antes de repetir.',
+        ]);
       } else if (Array.isArray(data?.problems) && data.problems.length) {
         setProblems(data.problems);
       } else {
