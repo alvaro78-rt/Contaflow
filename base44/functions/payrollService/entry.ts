@@ -63,6 +63,9 @@ async function calculate({ entities, companyId, actor }, emp, body) {
   const { competence, payment_date, tax_dependents, paid_days, unpaid_days, dsr_extra, dsr_discount } = inputs;
   const query = { company_id: companyId, employee_id: emp.id };
   const range = monthRange(competence);
+  if (validDate(emp.admission_date) && emp.admission_date > range.$lte) {
+    return fail(422, 'competencia_anterior_admissao');
+  }
   const closed = localToday();
   if (
     range.$lte >= closed || !validDate(payment_date) || payment_date < range.$lte ||
@@ -72,9 +75,6 @@ async function calculate({ entities, companyId, actor }, emp, body) {
     return incomplete(inputs.provisional && tax_dependents === null
       ? ['O cadastro não informa quais dependentes são fiscais. Atualize essa informação no cadastro para permitir o cálculo automático.']
       : ['Confira a competência encerrada e os dados de pagamento, dependentes e conferência do período.']);
-  }
-  if (validDate(emp.admission_date) && emp.admission_date > range.$lte) {
-    return fail(422, 'competencia_anterior_admissao');
   }
   if (
     emp.status === 'afastado' || emp.status === 'desligado' || emp.contract_type !== 'CLT' ||
