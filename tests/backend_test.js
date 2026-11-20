@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { attendance, calc, fixture, table } from './fixture.js';
+import { getMockClient } from './memory-sdk.js';
 import portal from '../base44/functions/employeePortal/entry.ts';
 import payroll from '../base44/functions/payrollService/entry.ts';
 import rh from '../base44/functions/rhService/entry.ts';
@@ -524,4 +525,62 @@ Deno.test('lista de empresas preserva autorizacao mestre e nao grava nem remove 
   const denied = await call(listCompanies, '', {}, 'worker');
   assert.equal(denied.status, 403);
   assert.equal(denied.error, 'somente_mestre');
+});
+
+Deno.test('erro SDK na consulta de folha retorna etapa segura sem gravar dados', async () => {
+  const db = fixture();
+  const sdk = getMockClient();
+  sdk.asServiceRole.entities.Payroll.filter = () => {
+    throw new Error('erro privado contendo CPF ou token hipotetico');
+  };
+  const res = await call(payroll, 'calculate', {
+    employee_id: 'worker', competence: '2026-10', automatic: true,
+  });
+  assert.equal(res.status, 500);
+  assert.equal(res.error, 'falha_servidor');
+  assert.equal(res.stage, 'historico_folha');
+  assert.equal(db.Payroll.length, 0);
+  assert.equal(db.Employee[0].processing_lock, '');
+  assert.equal(JSON.stringify(res).includes('privado'), false);
+});
+
+Deno.test('falha no bloqueio de funcionario nao permite gravar folha', async () => {
+  const db = fixture();
+  const sdk = getMockClient();
+  sdk.asServiceRole.entities.Employee.updateMany = () => {
+    throw new Error('erro privado de permissao no banco');
+  };
+  const res = await call(payroll, 'calculate', {
+    employee_id: 'worker', competence: '2026-10', automatic: true,
+  });
+  assert.equal(res.status, 500);
+  assert.equal(res.stage, 'bloqueio_funcionario');
+  assert.equal(db.Payroll.length, 0);
+  assert.equal(db.Employee[0].processing_lock, undefined);
+  assert.equal(JSON.stringify(res).includes('privado'), false);
+});
+
+Deno.test('falha de consulta mensal libera bloqueio e preserva folhas existentes', async () => {
+  const db = fixture();
+  db.Employee[0].dependents = [];
+  const sdk = getMockClient();
+  sdk.asServiceRole.entities.Rubric.filter = () => {
+    throw new Error('erro privado de banco');
+  };
+  const res = await call(payroll, 'calculate', {
+    employee_id: 'worker', competence: '2026-10', automatic: true,
+  });
+  assert.equal(res.status, 500);
+  assert.equal(res.stage, 'consultas_competencia');
+  assert.equal(db.Payroll.length, 0);
+  assert.equal(db.Employee[0].processing_lock, '');
+});
+
+Deno.test('versao de payrollService exige autorizacao mas nao altera registros', async () => {
+  const db = fixture();
+  const res = await call(payroll, 'release');
+  assert.equal(res.status, 200);
+  assert.match(res.release, /payroll-stage-diagnostics-v2/);
+  assert.equal(db.Payroll.length, 0);
+  assert.equal((await call(payroll, 'release', {}, 'worker')).status, 403);
 });
