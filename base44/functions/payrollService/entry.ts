@@ -23,6 +23,23 @@ function savedTaxDependents(employee) {
   return employee.dependents.filter((dep) => dep.tax_dependent).length;
 }
 
+// Apenas feriados nacionais confirmados para 2026 (Portaria MGI 11.460/2025).
+// Pontos facultativos e feriados estaduais/municipais não são presumidos.
+// https://www.gov.br/gestao/pt-br/assuntos/noticias/2025/dezembro/confira-o-calendario-oficial-de-feriados-nacionais-e-pontos-facultativos-em-2026
+const NATIONAL_HOLIDAYS_2026 = new Set([
+  '2026-01-01', '2026-04-03', '2026-04-21', '2026-05-01', '2026-09-07',
+  '2026-10-12', '2026-11-02', '2026-11-15', '2026-11-20', '2026-12-25',
+]);
+
+function paidNationalHolidays(competence, schedule, records) {
+  if (!Array.isArray(schedule?.work_days) || !Array.isArray(records)) return [];
+  const marked = new Set(records.map((r) => r.date));
+  return [...NATIONAL_HOLIDAYS_2026].filter((date) =>
+    date.startsWith(competence + '-') &&
+    schedule.work_days.includes(new Date(date).getUTCDay()) &&
+    !marked.has(date));
+}
+
 function automaticReview(employee, body) {
   if (body.automatic !== true) return { ...body, provisional: false };
   return {
@@ -111,15 +128,26 @@ async function calculate({ entities, companyId, actor }, emp, body) {
   ) {
     problems.push('Revise a natureza e as incidências de cada rubrica automática.');
   }
+  const calendarPaidDays = inputs.provisional
+    ? paidNationalHolidays(competence, schedule, marks.items)
+    : paid_days;
   const review = reviewAttendance(
     marks.items,
     schedule,
     competence,
-    paid_days,
+    calendarPaidDays,
     unpaid_days,
     table?.tolerance_minutes,
   );
   problems.push(...review.problems);
+  if (inputs.provisional) {
+    const holidayWork = [...new Set(marks.items
+      .filter((r) => NATIONAL_HOLIDAYS_2026.has(r.date)).map((r) => r.date))];
+    if (holidayWork.length) problems.push(
+      'Há marcações em feriado nacional (' + holidayWork.join(', ') +
+      '). A remuneração especial desse trabalho exige conferência.',
+    );
+  }
   const { stats } = review;
   if (inputs.provisional && stats?.overtime > 0) {
     problems.push('Há horas extras registradas. O reflexo no DSR não está cadastrado e não pode ser presumido.');
@@ -160,7 +188,7 @@ async function calculate({ entities, companyId, actor }, emp, body) {
         calculation_reference_date: inputs.provisional ? payment_date : null,
         payment_date_confirmed: !inputs.provisional,
         tax_dependents,
-        paid_days,
+        paid_days: calendarPaidDays,
         unpaid_days,
         dsr_extra,
         dsr_discount,
