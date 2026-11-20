@@ -133,9 +133,6 @@ export default async function (req) {
         companyName = company?.name || '';
       }
 
-      // Clear throttling only when the account is validated and active.
-      // This is local-invocation defense-in-depth, not a cross-instance guarantee.
-      clearAuthAttempts('login', cpf);
       const token = issueToken();
       const expiresAt = new Date(Date.now() + 12 * 60 * 60 * 1000).toISOString();
       await base44.asServiceRole.entities.AuthSession.deleteMany({ employee_id: emp.id });
@@ -146,6 +143,8 @@ export default async function (req) {
         role: emp.access_role || 'funcionario',
         expires_at: expiresAt,
       });
+      // Unlock only after the authenticated session was persisted successfully.
+      clearAuthAttempts('login', cpf);
 
       // Nunca devolve hash de senha.
       return Response.json({
