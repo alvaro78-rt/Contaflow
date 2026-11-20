@@ -337,7 +337,7 @@ Deno.test('modo automático não calcula como jornada comum trabalho em feriado 
 Deno.test('folha bloqueia competência totalmente anterior à admissão sem criar registro', async () => {
   const db = fixture();
   db.Employee[0].admission_date = '2026-11-10';
-  db.Employee[0].dependents = [];
+  // O aviso de admissão deve ter prioridade mesmo sem dependentes cadastrados.
   const result = await call(payroll, 'calculate', {
     employee_id: 'worker', competence: '2026-10', automatic: true,
   });
