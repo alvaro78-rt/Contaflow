@@ -18,7 +18,7 @@ export default function Companies() {
   const [entrando, setEntrando] = useState('');
   const [companies, setCompanies] = useState(null);
   const [inactiveCompanies, setInactiveCompanies] = useState([]);
-  const [error, setError] = useState('');
+  const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
   const request = useRef(0);
   const changing = useRef(false);
