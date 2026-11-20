@@ -66,7 +66,7 @@ export default async function (req) {
     }
 
     return Response.json({ ok: true, master: { id: created.id, full_name: created.full_name } });
-  } catch (error) {
-    return Response.json({ error: 'falha_servidor', message: error.message }, { status: 500 });
+  } catch {
+    return Response.json({ error: 'falha_servidor' }, { status: 500 });
   }
 }
