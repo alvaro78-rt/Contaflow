@@ -132,6 +132,34 @@ async function calculate({ entities, companyId, actor }, emp, body) {
   ) {
     problems.push('Revise a natureza e as incidências de cada rubrica automática.');
   }
+  // Sem qualquer marcação, o ponto não permite identificar faltas, horas extras ou atrasos.
+  // Mostre somente uma prévia NÃO SALVA, nunca uma folha de pagamento aprovada/finalizável.
+  if (inputs.provisional && marks.items.length === 0) {
+    if (problems.length) return incomplete(problems);
+    const estimate = buildPayroll({
+      employee: emp,
+      positionName: position.name,
+      competence,
+      stats: { worked: 0, late: 0, overtime: 0, absences: 0, dsrExtra: 0, dsrDiscount: 0 },
+      rubrics: rubrics.items,
+      table,
+      paymentDate: payment_date,
+      taxDependents: tax_dependents,
+      admissionDate: emp.admission_date,
+    });
+    if (!consistentReceipt(estimate)) return fail(422, 'valores_inconsistentes');
+    return ok({
+      preview_only: true,
+      payroll: {
+        ...estimate,
+        id: null,
+        preview_only: true,
+        attendance_pending: true,
+        status: 'rascunho',
+      },
+    });
+  }
+
   const calendarPaidDays = inputs.provisional
     ? paidNationalHolidays(competence, schedule, marks.items, emp.admission_date)
     : paid_days;
