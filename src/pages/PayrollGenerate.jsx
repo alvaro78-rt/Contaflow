@@ -40,7 +40,9 @@ export default function PayrollGenerate() {
       });
       if (!response.data?.ok || !response.data?.payroll) throw new Error('resposta_invalida');
       setPayroll(response.data.payroll);
-      if (response.data.existing || response.data.existing_final) {
+      if (response.data.preview_only) {
+        setMessage('Prévia não salva: o sistema não encontrou registros de ponto neste mês. Os valores são estimativas, sem apuração de faltas e extras. A conferência do ponto é necessária para gerar a folha definitiva.');
+      } else if (response.data.existing || response.data.existing_final) {
         setMessage('Folha já registrada. Os valores originais foram preservados.');
       } else {
         toast({ title: 'Folha calculada e salva para conferência' });
@@ -58,7 +60,7 @@ export default function PayrollGenerate() {
           competencia_anterior_admissao: 'A folha não pode ser gerada antes da data de admissão. Confira o mês da competência e o cadastro do funcionário.',
           admissao_no_mes: 'A admissão ocorreu dentro da competência. Confira o cálculo proporcional no rascunho.',
           funcionario_desligado: 'O funcionário está desligado. Não é possível gerar esta folha por este fluxo.',
-          ponto_nao_conferido: 'Não há registros de ponto nesta competência. Confira o período antes de calcular faltas e remuneração.',
+          ponto_nao_conferido: 'O Base44 informou ponto não conferido. Confira se a função payrollService foi publicada na versão atual e se os registros da competência estão cadastrados.',
           limite_consulta: 'Há muitos registros para esta consulta. A folha não foi calculada para evitar dados incompletos.',
           salvamento_nao_confirmado: 'O servidor não confirmou o salvamento. Confira o histórico antes de tentar novamente.',
           empresa_alterada: 'A empresa aberta mudou. Volte à lista de empresas e entre novamente.',
@@ -98,7 +100,7 @@ export default function PayrollGenerate() {
       {message && <p className="text-sm text-amber-700">{message}</p>}
       {payroll && (
         <div className="space-y-4">
-          <PayrollActions key={payroll.id + payroll.status} payroll={payroll} onChange={setPayroll} />
+          {!payroll.preview_only && <PayrollActions key={payroll.id + payroll.status} payroll={payroll} onChange={setPayroll} />}
           <PayrollSheet payroll={payroll} />
         </div>
       )}
