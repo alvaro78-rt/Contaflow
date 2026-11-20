@@ -31,11 +31,11 @@ const NATIONAL_HOLIDAYS_2026 = new Set([
   '2026-10-12', '2026-11-02', '2026-11-15', '2026-11-20', '2026-12-25',
 ]);
 
-function paidNationalHolidays(competence, schedule, records) {
+function paidNationalHolidays(competence, schedule, records, admissionDate = '') {
   if (!Array.isArray(schedule?.work_days) || !Array.isArray(records)) return [];
   const marked = new Set(records.map((r) => r.date));
   return [...NATIONAL_HOLIDAYS_2026].filter((date) =>
-    date.startsWith(competence + '-') &&
+    date.startsWith(competence + '-') && (!admissionDate || date >= admissionDate) &&
     schedule.work_days.includes(new Date(date).getUTCDay()) &&
     !marked.has(date));
 }
@@ -63,6 +63,9 @@ async function calculate({ entities, companyId, actor }, emp, body) {
   const { competence, payment_date, tax_dependents, paid_days, unpaid_days, dsr_extra, dsr_discount } = inputs;
   const query = { company_id: companyId, employee_id: emp.id };
   const range = monthRange(competence);
+  if (validDate(emp.admission_date) && emp.admission_date > range.$lte) {
+    return fail(422, 'competencia_anterior_admissao');
+  }
   const closed = localToday();
   if (
     range.$lte >= closed || !validDate(payment_date) || payment_date < range.$lte ||
@@ -75,12 +78,13 @@ async function calculate({ entities, companyId, actor }, emp, body) {
   }
   if (
     emp.status === 'afastado' || emp.status === 'desligado' || emp.contract_type !== 'CLT' ||
-    !validDate(emp.admission_date) || emp.admission_date > range.$gte
+    !validDate(emp.admission_date)
   ) {
     return incomplete([
-      'O fluxo mensal exige contrato CLT ativo durante toda a competência. Confira admissão, férias, afastamentos e desligamentos.',
+      'Confira o contrato CLT, a situação e a data de admissão do funcionário.',
     ]);
   }
+  const admittedThisMonth = emp.admission_date > range.$gte;
   const legacy = await Promise.all([
     hasUnscopedHistory(entities.TimeRecord, { employee_id: emp.id, date: range }),
     hasUnscopedHistory(entities.Vacation, { employee_id: emp.id }),
@@ -129,7 +133,7 @@ async function calculate({ entities, companyId, actor }, emp, body) {
     problems.push('Revise a natureza e as incidências de cada rubrica automática.');
   }
   const calendarPaidDays = inputs.provisional
-    ? paidNationalHolidays(competence, schedule, marks.items)
+    ? paidNationalHolidays(competence, schedule, marks.items, emp.admission_date)
     : paid_days;
   const review = reviewAttendance(
     marks.items,
@@ -138,6 +142,7 @@ async function calculate({ entities, companyId, actor }, emp, body) {
     calendarPaidDays,
     unpaid_days,
     table?.tolerance_minutes,
+    emp.admission_date,
   );
   problems.push(...review.problems);
   if (inputs.provisional) {
@@ -177,6 +182,7 @@ async function calculate({ entities, companyId, actor }, emp, body) {
     table,
     paymentDate: payment_date,
     taxDependents: tax_dependents,
+    admissionDate: emp.admission_date,
   });
   if (!consistentReceipt(data)) return fail(422, 'valores_inconsistentes');
   return ok({
@@ -194,6 +200,7 @@ async function calculate({ entities, companyId, actor }, emp, body) {
         dsr_discount,
         actor_id: actor.id,
         source: inputs.provisional ? 'automatic' : 'manual',
+        admission_partial: admittedThisMonth,
         version: inputs.provisional ? 2 : 1,
       },
     }),
@@ -237,6 +244,12 @@ export default async function (req) {
       }
       if (!row || row.id !== target.id || row.status !== (action === 'approve' ? 'rascunho' : 'aprovada')) {
         return fail(409, 'situacao_invalida');
+      }
+      if (row.earnings?.some((item) => item.description?.includes('estimativa'))) {
+        return incomplete([
+          'A folha possui salário proporcional estimado após admissão durante o mês. ' +
+          'É necessária conferência da regra contratual antes de aprovar.',
+        ]);
       }
       if (row.input_review?.version === 2 && row.input_review?.payment_date_confirmed !== true) {
         return incomplete([

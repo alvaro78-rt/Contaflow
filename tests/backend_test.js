@@ -333,3 +333,55 @@ Deno.test('modo automático não calcula como jornada comum trabalho em feriado 
   assert.ok(res.problems?.some((p) => p.includes('feriado nacional')));
   assert.equal(db.Payroll.length, 0);
 });
+
+Deno.test('folha bloqueia competência totalmente anterior à admissão sem criar registro', async () => {
+  const db = fixture();
+  db.Employee[0].admission_date = '2026-11-10';
+  // O aviso de admissão deve ter prioridade mesmo sem dependentes cadastrados.
+  const result = await call(payroll, 'calculate', {
+    employee_id: 'worker', competence: '2026-10', automatic: true,
+  });
+  assert.equal(result.status, 422);
+  assert.equal(result.error, 'competencia_anterior_admissao');
+  assert.equal(db.Payroll.length, 0);
+});
+
+Deno.test('admissão durante outubro calcula rascunho proporcional, sem contar dias anteriores', async () => {
+  const db = fixture();
+  db.Employee[0].admission_date = '2026-10-16';
+  db.Employee[0].dependents = [];
+  for (let day = 16; day <= 31; day++) {
+    const date = '2026-10-' + String(day).padStart(2, '0');
+    if ([0, 6].includes(new Date(date).getUTCDay())) continue;
+    for (const [kind, original_time] of [
+      ['entry', '08:00'], ['break_start', '12:00'],
+      ['break_end', '13:00'], ['exit', '17:00'],
+    ]) db.TimeRecord.push({ company_id: 'A', employee_id: 'worker', date, kind, original_time });
+  }
+  const result = await call(payroll, 'calculate', {
+    employee_id: 'worker', competence: '2026-10', automatic: true,
+  });
+  assert.equal(result.status, 200);
+  assert.equal(result.payroll.earnings[0].value, 2580.65);
+  assert.equal(result.payroll.base_salary, 5000);
+  assert.match(result.payroll.earnings[0].description, /estimativa 16\/31 dias/);
+  assert.deepEqual(result.payroll.input_review.paid_days, []);
+  assert.equal(result.payroll.input_review.admission_partial, true);
+  assert.equal((await call(payroll, 'approve', { payroll_id: result.payroll.id })).status, 422);
+});
+
+Deno.test('marcações anteriores à admissão bloqueiam rascunho e não são descartadas silenciosamente', async () => {
+  const db = fixture();
+  db.Employee[0].admission_date = '2026-10-16';
+  db.Employee[0].dependents = [];
+  for (const [kind, original_time] of [['entry', '08:00'], ['exit', '17:00']]) {
+    db.TimeRecord.push({
+      company_id: 'A', employee_id: 'worker', date: '2026-10-15', kind, original_time,
+    });
+  }
+  const result = await call(payroll, 'calculate', {
+    employee_id: 'worker', competence: '2026-10', automatic: true,
+  });
+  assert.equal(result.status, 422);
+  assert.equal(db.Payroll.length, 0);
+});

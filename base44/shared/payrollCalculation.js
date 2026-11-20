@@ -135,14 +135,24 @@ export function validatePayrollInput({ employee, schedule, table }) {
   return problems;
 }
 
-export function buildPayroll({ employee, positionName, competence, stats, rubrics = [], table, paymentDate, taxDependents }) {
+export function buildPayroll({ employee, positionName, competence, stats, rubrics = [], table, paymentDate, taxDependents, admissionDate = '' }) {
   const p = paramsFromTable(table);
   const salary = Number(employee.base_salary) || 0;
+  const [year, month] = competence.split('-').map(Number);
+  const calendarDays = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  const partialMonth = admissionDate.startsWith(competence + '-') && admissionDate > competence + '-01';
+  // Preliminary proportional estimate, subject to the applicable collective agreement.
+  // The original contracted monthly salary is preserved in base_salary and hourly rate.
+  const payableCalendarDays = partialMonth ? calendarDays - Number(admissionDate.slice(8, 10)) + 1 : calendarDays;
+  const proportionSalary = partialMonth ? round2(salary * payableCalendarDays / calendarDays) : round2(salary);
   const weekly = Number(employee.weekly_hours) || 44;
   const monthlyHours = weekly * 5; // 44h/semana = 220h/mês
   const hourly = salary / monthlyHours;
 
-  const earnings = [{ description: 'Salário-base', value: round2(salary) }];
+  const earnings = [{
+    description: partialMonth ? `Salário proporcional (estimativa ${payableCalendarDays}/${calendarDays} dias)` : 'Salário-base',
+    value: proportionSalary,
+  }];
   const overtimeValue = round2((stats.overtime / 60) * hourly * p.overtimeRate);
   if (overtimeValue > 0) {
     const percent = Math.round((p.overtimeRate - 1) * 100);

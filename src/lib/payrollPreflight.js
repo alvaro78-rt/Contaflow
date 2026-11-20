@@ -64,3 +64,29 @@ export function payrollFormProblems({
   }
   return issues;
 }
+
+/** Only completed payroll competences are available for final-month calculation. */
+export function admissionMonth(admissionDate) {
+  if (!isDate(admissionDate)) return null;
+  return admissionDate.slice(0, 7);
+}
+
+export function suggestedCompetence(currentCompetence, admissionDate, lastClosed = lastClosedCompetence()) {
+  const firstMonth = admissionMonth(admissionDate);
+  if (firstMonth && firstMonth > currentCompetence && firstMonth <= lastClosed) return firstMonth;
+  return currentCompetence;
+}
+
+export function competenceAdmissionProblem(competence, admissionDate, lastClosed = lastClosedCompetence()) {
+  const firstMonth = admissionMonth(admissionDate);
+  if (!firstMonth) return 'Confira a data de admissão no cadastro do funcionário.';
+  if (competence > lastClosed) return 'A competência ainda não está encerrada. Selecione um mês já encerrado.';
+  if (competence < firstMonth) {
+    return firstMonth > lastClosed
+      ? 'O funcionário foi admitido em ' + firstMonth +
+        '. Ainda não existe uma competência encerrada desde a admissão.'
+      : 'O funcionário foi admitido em ' + firstMonth +
+        '. Selecione essa competência ou um mês posterior para processar a folha.';
+  }
+  return '';
+}
