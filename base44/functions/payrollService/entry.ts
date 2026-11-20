@@ -12,6 +12,8 @@ import { consistentReceipt, reviewAttendance, verifiedTable } from '../../shared
 
 const incomplete = (problems) => Response.json({ error: 'cadastro_incompleto', problems }, { status: 422 });
 const localToday = () => new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Recife' }).format(new Date());
+// Marca da lógica ativa, consultável somente com uma sessão válida.
+const PAYROLL_SERVICE_RELEASE = '2026-11-20-payroll-attendance-v1';
 
 // Never treat an unclassified dependent as a tax dependent.
 function savedTaxDependents(employee) {
@@ -243,6 +245,8 @@ export default async function (req) {
     if (admin.response) return admin.response;
     const { companyId, entities, actor } = admin;
     const action = body.action;
+    // Diagnóstico autenticado, somente leitura: não acessa ponto nem gera folha.
+    if (action === 'release') return ok({ service: 'payrollService', release: PAYROLL_SERVICE_RELEASE, attendance_preview: true });
     if (!['calculate', 'view', 'approve', 'finalize'].includes(action)) return fail(400, 'acao_invalida');
     if (actor.access_role === 'gerente' && action !== 'calculate') return fail(403, 'sem_permissao');
     if (action !== 'view' && body.expected_company_id !== companyId) return fail(409, 'empresa_alterada');

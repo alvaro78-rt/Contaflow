@@ -10,6 +10,7 @@ import EmployeePicker from '@/components/EmployeePicker';
 import PayrollSheet from '@/components/payroll/PayrollSheet';
 import PayrollActions from '@/components/payroll/PayrollActions';
 import { lastClosedCompetence, suggestedCompetence, competenceAdmissionProblem } from '@/lib/payrollPreflight';
+import { classifyPayrollRelease } from '@/lib/payrollServiceVersion';
 
 export default function PayrollGenerate() {
   const [emp, setEmp] = useState(null);
@@ -50,7 +51,24 @@ export default function PayrollGenerate() {
     } catch (error) {
       const status = error?.response?.status ?? error?.status;
       const data = error?.response?.data ?? error?.data;
-      if (Array.isArray(data?.problems) && data.problems.length) {
+      // O código antigo enviava ponto_nao_conferido até sem marcações.
+      // Antes de atribuir o erro ao RH, verificamos a versão real do endpoint.
+      if (data?.error === 'ponto_nao_conferido') {
+        let runtime = 'unknown';
+        try {
+          const release = await base44.functions.invoke('payrollService', {
+            action: 'release', token: session?.token,
+          });
+          runtime = classifyPayrollRelease(release);
+        } catch (probeError) {
+          runtime = classifyPayrollRelease(null, probeError);
+        }
+        setProblems([runtime === 'outdated'
+          ? 'A função pública payrollService ainda executa uma versão antiga. O ponto não foi alterado. Confira a publicação ativa no Base44 antes de tentar calcular novamente.'
+          : runtime === 'current'
+            ? 'O Base44 retornou uma resposta incompatível com a versão atual da função. Pode haver diferentes versões em execução. Encaminhe o erro e a rota ao suporte Base44; não modifique os registros de ponto.'
+            : 'O Base44 devolveu ponto_nao_conferido, mas não foi possível identificar a versão do servidor. Confira a publicação de payrollService sem alterar os pontos cadastrados.']);
+      } else if (Array.isArray(data?.problems) && data.problems.length) {
         setProblems(data.problems);
       } else {
         const messages = {
