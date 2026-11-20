@@ -46,7 +46,7 @@ export default async function (req) {
       ok: true,
       company: { id: company.id, name: company.name || '', status: company.status || 'ativa' },
     });
-  } catch (error) {
-    return Response.json({ error: 'falha_servidor', message: error.message }, { status: 500 });
+  } catch {
+    return Response.json({ error: 'falha_servidor' }, { status: 500 });
   }
 }
