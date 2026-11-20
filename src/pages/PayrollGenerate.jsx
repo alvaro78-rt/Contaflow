@@ -9,7 +9,7 @@ import Field from '@/components/Field';
 import EmployeePicker from '@/components/EmployeePicker';
 import PayrollSheet from '@/components/payroll/PayrollSheet';
 import PayrollActions from '@/components/payroll/PayrollActions';
-import { lastClosedCompetence } from '@/lib/payrollPreflight';
+import { lastClosedCompetence, suggestedCompetence, competenceAdmissionProblem } from '@/lib/payrollPreflight';
 
 export default function PayrollGenerate() {
   const [emp, setEmp] = useState(null);
@@ -21,8 +21,9 @@ export default function PayrollGenerate() {
   const { toast } = useToast();
 
   const { session } = useSession();
+  const admissionProblem = emp ? competenceAdmissionProblem(comp, emp.admission_date) : '';
   const process = async () => {
-    if (!emp || !comp || loading) return;
+    if (!emp || !comp || loading || admissionProblem) return;
     setLoading(true);
     setProblems([]);
     setMessage('');
@@ -54,7 +55,8 @@ export default function PayrollGenerate() {
           historico_sem_empresa: 'O RH precisa conciliar um registro antigo sem vínculo de empresa.',
           folha_aprovada: 'Esta folha já foi aprovada. Não é permitido recalcular sem uma revisão autorizada.',
           folhas_duplicadas: 'Existem folhas duplicadas para esta competência. Solicite revisão antes de continuar.',
-          competencia_anterior_admissao: 'A competência selecionada é anterior à admissão do funcionário.',
+          competencia_anterior_admissao: 'A folha não pode ser gerada antes da data de admissão. Confira o mês da competência e o cadastro do funcionário.',
+          admissao_no_mes: 'A admissão ocorreu dentro da competência. Confira o cálculo proporcional no rascunho.',
           funcionario_desligado: 'O funcionário está desligado. Não é possível gerar esta folha por este fluxo.',
           ponto_nao_conferido: 'Não há registros de ponto nesta competência. Confira o período antes de calcular faltas e remuneração.',
           limite_consulta: 'Há muitos registros para esta consulta. A folha não foi calculada para evitar dados incompletos.',
@@ -83,10 +85,11 @@ export default function PayrollGenerate() {
     <div className="space-y-6">
       <PageHeader code="RF10 · RF12 · RF16" title="Folha de pagamento" description="Selecione o funcionário e processe a competência. O sistema consulta o cadastro, o ponto, as rubricas e a tabela legal; eventuais pendências aparecem abaixo." />
       <div className="grid gap-4 md:grid-cols-[1fr_200px_auto] md:items-end">
-        <Field label="Funcionário"><EmployeePicker value={emp} onChange={(e) => { setEmp(e); setPayroll(null); setProblems([]); }} /></Field>
+        <Field label="Funcionário"><EmployeePicker value={emp} onChange={(e) => { setEmp(e); if (e) setComp((old) => suggestedCompetence(old, e.admission_date)); setPayroll(null); setProblems([]); }} /></Field>
         <Field label="Competência"><Input type="month" value={comp} onChange={(e) => { setComp(e.target.value); setPayroll(null); setProblems([]); }} /></Field>
-        <Button disabled={!emp || !comp || loading} onClick={process}>{loading ? 'Processando…' : 'Processar folha'}</Button>
+        <Button disabled={!emp || !comp || loading || Boolean(admissionProblem)} onClick={process}>{loading ? 'Processando…' : 'Processar folha'}</Button>
       </div>
+      {admissionProblem && <p role="alert" className="text-sm text-destructive">{admissionProblem}</p>}
       {problems.length > 0 && (
         <ul className="border border-destructive bg-red-50 px-4 py-3 text-sm text-destructive">
           {problems.map((p) => <li key={p}>• {p}</li>)}
