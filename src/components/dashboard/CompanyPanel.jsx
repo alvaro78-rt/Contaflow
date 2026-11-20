@@ -6,6 +6,7 @@ import { base44 } from '@/api/base44Client';
 import { Button } from '@/components/ui/button';
 import { useSession } from '@/lib/SessionContext';
 import { competenceLabel, money } from '@/lib/format';
+import { describeDashboardError } from '@/lib/dashboardError';
 
 const SESSION_ERRORS = ['sessao_invalida', 'sessao_expirada', 'acesso_encerrado', 'conta_desligada'];
 const MANAGER_MODULES = ['/funcionarios/novo', '/funcionarios', '/cargos', '/jornadas', '/ponto', '/folha', '/contracheques'];
@@ -16,15 +17,15 @@ export default function CompanyPanel() {
   const { session, logout } = useSession();
   const navigate = useNavigate();
   const [data, setData] = useState(null);
-  const [error, setError] = useState('');
+  const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
     setLoading(true);
-    setError('');
+    setError(null);
     try {
       const res = await base44.functions.invoke('companyDashboard', { token: session?.token });
-      if (!res.data?.ok) throw new Error(res.data?.error || 'falha');
+      if (!res.data?.ok) throw { response: { status: res.status, data: res.data } };
       setData(res.data);
     } catch (err) {
       const code = err?.data?.error ?? err?.response?.data?.error;
@@ -34,7 +35,7 @@ export default function CompanyPanel() {
         return;
       }
       setData(null);
-      setError('Não foi possível carregar os dados da empresa. Os valores não serão apresentados como zero.');
+      setError(describeDashboardError(err));
     } finally {
       setLoading(false);
     }
@@ -74,7 +75,7 @@ export default function CompanyPanel() {
               Funcionários, ponto, folha de pagamento e contracheques em um só lugar.
             </p>
             <p className="mt-3 text-xs text-sky-200">
-              {data ? `Perfil de ${data.profile?.name || session?.name || 'gestão'} · Competência ${competenceLabel(data.competence)}` : 'Consultando informações da empresa…'}
+              {data ? `Perfil de ${data.profile?.name || session?.name || 'gestão'} · Competência ${competenceLabel(data.competence)}` : loading ? 'Consultando informações da empresa…' : error ? 'Consulta indisponível — confira o diagnóstico abaixo.' : 'Aguardando dados da empresa.'}
             </p>
           </div>
           {session?.master && (
@@ -109,9 +110,15 @@ export default function CompanyPanel() {
         </div>
         {loading && !data && <p className="text-sm text-muted-foreground">Carregando os números desta empresa…</p>}
         {error && (
-          <p role="alert" className="rounded-lg border border-destructive/30 bg-red-50 px-4 py-3 text-sm text-destructive">
-            {error}
-          </p>
+          <div role="alert" className="space-y-2 rounded-lg border border-destructive/30 bg-red-50 px-4 py-3 text-sm text-destructive">
+            <p>{error.message}</p>
+            <p className="font-mono text-xs">companyDashboard · {error.details}</p>
+            {session?.master && error.chooseCompany && (
+              <Link className="inline-flex rounded-md border border-destructive/30 bg-white px-3 py-2 font-medium underline underline-offset-2" to="/empresas">
+                Selecionar empresa
+              </Link>
+            )}
+          </div>
         )}
         {stats.length > 0 && (
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
