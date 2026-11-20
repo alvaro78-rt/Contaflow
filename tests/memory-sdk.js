@@ -71,3 +71,6 @@ export function seed(rows) {
   return rows;
 }
 export const createClientFromRequest = () => database;
+
+// Somente fixtures de teste: injeção de falhas controladas no SDK em memória.
+export const getMockClient = () => database;
