@@ -385,3 +385,34 @@ Deno.test('marcações anteriores à admissão bloqueiam rascunho e não são de
   assert.equal(result.status, 422);
   assert.equal(db.Payroll.length, 0);
 });
+
+Deno.test('sem qualquer ponto, mostra apenas prévia não salva e nunca permite aprovação', async () => {
+  const db = fixture();
+  db.Employee[0].dependents = [];
+  const result = await call(payroll, 'calculate', {
+    employee_id: 'worker', competence: '2026-10', automatic: true,
+  });
+  assert.equal(result.status, 200);
+  assert.equal(result.preview_only, true);
+  assert.equal(result.payroll.preview_only, true);
+  assert.equal(result.payroll.attendance_pending, true);
+  assert.equal(result.payroll.id, null);
+  assert.equal(result.payroll.time_summary.absences, 0); // não apurado, NÃO significa ausência zero
+  assert.equal(db.Payroll.length, 0); // nenhuma folha financeira criada
+  assert.equal((await call(payroll, 'approve', { payroll_id: 'inexistente' })).status, 404);
+});
+
+Deno.test('ponto parcialmente registrado não vira simulação de frequência zerada', async () => {
+  const db = fixture();
+  db.Employee[0].dependents = [];
+  db.TimeRecord.push({
+    company_id: 'A', employee_id: 'worker', date: '2026-10-01',
+    kind: 'entry', original_time: '08:00',
+  });
+  const result = await call(payroll, 'calculate', {
+    employee_id: 'worker', competence: '2026-10', automatic: true,
+  });
+  assert.equal(result.status, 422);
+  assert.equal(result.preview_only, undefined);
+  assert.equal(db.Payroll.length, 0);
+});
