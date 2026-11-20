@@ -11,44 +11,50 @@ import {
 import { consistentReceipt, reviewAttendance, verifiedTable } from '../../shared/payrollReview.js';
 
 const incomplete = (problems) => Response.json({ error: 'cadastro_incompleto', problems }, { status: 422 });
+const localToday = () => new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Recife' }).format(new Date());
+
+// Never treat an unclassified dependent as a tax dependent.
+function savedTaxDependents(employee) {
+  if (Number.isInteger(employee.tax_dependents) &&
+      employee.tax_dependents >= 0 && employee.tax_dependents <= 99) return employee.tax_dependents;
+  if (!Array.isArray(employee.dependents)) return null;
+  if (employee.dependents.length === 0) return 0;
+  if (!employee.dependents.every((dep) => typeof dep?.tax_dependent === 'boolean')) return null;
+  return employee.dependents.filter((dep) => dep.tax_dependent).length;
+}
+
+function automaticReview(employee, body) {
+  if (body.automatic !== true) return { ...body, provisional: false };
+  return {
+    ...body,
+    payment_date: localToday(), // reference for an estimated calculation, not proof of actual payment
+    tax_dependents: savedTaxDependents(employee),
+    paid_days: [],
+    unpaid_days: [],
+    dsr_extra: 0,
+    dsr_discount: 0,
+    reviewed_inputs: true, // permits a preliminary draft only
+    provisional: true,
+  };
+}
 const applies = (t, comp) =>
   t.active !== false && validMonth(t.start_competence) &&
   t.start_competence <= comp && (!t.end_competence || t.end_competence >= comp);
 
 async function calculate({ entities, companyId, actor }, emp, body) {
-  const { competence } = body;
-  const automatic = body.automatic === true;
+  const inputs = automaticReview(emp, body);
+  const { competence, payment_date, tax_dependents, paid_days, unpaid_days, dsr_extra, dsr_discount } = inputs;
   const query = { company_id: companyId, employee_id: emp.id };
   const range = monthRange(competence);
-  const closed = new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Recife' }).format(new Date());
-
-  // A tela simples não envia campos financeiros inventados. A função consulta
-  // cadastro, ponto, rubricas e tabela legal. A data do processamento é usada
-  // somente como referência para calcular um RASCUNHO, não como prova de pagamento.
-  const payment_date = automatic ? closed : body.payment_date;
-  const fiscalDependentsUnconfirmed = automatic &&
-    Array.isArray(emp.dependents) && emp.dependents.length > 0;
-  const tax_dependents = automatic ? (fiscalDependentsUnconfirmed ? null : 0) : body.tax_dependents;
-  const paid_days = automatic ? [] : body.paid_days;
-  const unpaid_days = automatic ? [] : body.unpaid_days;
-  const dsr_extra = automatic ? 0 : body.dsr_extra;
-  const dsr_discount = automatic ? 0 : body.dsr_discount;
-  if (fiscalDependentsUnconfirmed) {
-    return incomplete([
-      'Há dependentes cadastrados, mas não é possível presumir quantos são dependentes fiscais. Confira essa informação com o RH antes de calcular.',
-    ]);
-  }
+  const closed = localToday();
   if (
     range.$lte >= closed || !validDate(payment_date) || payment_date < range.$lte ||
     !Number.isInteger(tax_dependents) ||
-    tax_dependents < 0 || tax_dependents > 99 ||
-    (!automatic && body.reviewed_inputs !== true)
+    tax_dependents < 0 || tax_dependents > 99 || inputs.reviewed_inputs !== true
   ) {
-    return incomplete([
-      automatic
-        ? 'Selecione uma competência encerrada. A data do processamento será usada como referência para o rascunho.'
-        : 'Informe uma competência encerrada, a data de pagamento e os dependentes fiscais. Confirme os dados do período.',
-    ]);
+    return incomplete(inputs.provisional && tax_dependents === null
+      ? ['O cadastro não informa quais dependentes são fiscais. Atualize essa informação no cadastro para permitir o cálculo automático.']
+      : ['Confira a competência encerrada e os dados de pagamento, dependentes e conferência do período.']);
   }
   if (
     emp.status === 'afastado' || emp.status === 'desligado' || emp.contract_type !== 'CLT' ||
@@ -115,15 +121,11 @@ async function calculate({ entities, companyId, actor }, emp, body) {
   );
   problems.push(...review.problems);
   const { stats } = review;
-  // DSR e faltas sem classificação não podem ser presumidos como zero.
-  // Reutilizamos os zeros somente quando o ponto comprova que não há ocorrência.
-  if (automatic && stats) {
-    if (stats.overtime > 0) {
-      problems.push('Há horas extras sem reflexo de DSR apurado. Concilie os valores com o RH antes de processar.');
-    }
-    if (stats.late > 0 || stats.absences > 0) {
-      problems.push('Há atrasos ou faltas que podem afetar o DSR. Confira o ponto e a apuração antes de processar.');
-    }
+  if (inputs.provisional && stats?.overtime > 0) {
+    problems.push('Há horas extras registradas. O reflexo no DSR não está cadastrado e não pode ser presumido.');
+  }
+  if (inputs.provisional && (stats?.absences > 0 || stats?.late > 0)) {
+    problems.push('Há faltas ou atrasos que exigem apuração de DSR antes de gerar a folha.');
   }
   if (
     ![dsr_extra, dsr_discount].every((v) =>
@@ -154,14 +156,17 @@ async function calculate({ entities, companyId, actor }, emp, body) {
       ...data,
       ...query,
       input_review: {
-        payment_date,
+        payment_date: inputs.provisional ? '' : payment_date,
+        calculation_reference_date: inputs.provisional ? payment_date : null,
+        payment_date_confirmed: !inputs.provisional,
         tax_dependents,
         paid_days,
         unpaid_days,
         dsr_extra,
         dsr_discount,
         actor_id: actor.id,
-        version: 1,
+        source: inputs.provisional ? 'automatic' : 'manual',
+        version: inputs.provisional ? 2 : 1,
       },
     }),
   });
@@ -205,7 +210,12 @@ export default async function (req) {
       if (!row || row.id !== target.id || row.status !== (action === 'approve' ? 'rascunho' : 'aprovada')) {
         return fail(409, 'situacao_invalida');
       }
-      if (row.input_review?.version !== 1) {
+      if (row.input_review?.version === 2 && row.input_review?.payment_date_confirmed !== true) {
+        return incomplete([
+          'Rascunho automático calculado. A data efetiva de pagamento precisa ser confirmada antes da aprovação para validar o IRRF.',
+        ]);
+      }
+      if (row.input_review?.version !== 1 && row.input_review?.version !== 2) {
         return incomplete([
           'A folha é anterior à conferência de insumos. Preserve o histórico e faça a conciliação contábil antes de mudar a situação.',
         ]);
