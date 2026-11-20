@@ -12,6 +12,7 @@ const LOGIN_ERRORS = {
   empresa_inativa: 'Esta empresa está inativa. Fale com o responsável pelo sistema.',
   credenciais: 'CPF ou senha inválidos.',
   credenciais_incompletas: 'Informe o CPF e a senha.',
+  muitas_tentativas: 'Muitas tentativas de acesso. Aguarde um pouco antes de tentar novamente.',
   cpf_invalido: 'CPF inválido. Confira os 11 dígitos.',
   sem_acesso: 'Este CPF está cadastrado, mas ainda precisa de uma senha de acesso. Fale com o responsável pela empresa.',
   cpf_duplicado: 'Há mais de uma conta com este CPF. Peça ao responsável pela empresa para conferir o cadastro.',

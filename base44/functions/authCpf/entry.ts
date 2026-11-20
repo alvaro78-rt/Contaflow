@@ -3,6 +3,7 @@ import { loadSession } from '../../shared/sessionGuard.ts';
 import { onlyDigits } from '../../shared/authHelpers.ts';
 import { isValidCpf } from '../../shared/cpf.ts';
 import { newPasswordHash, verifyPassword } from '../../shared/passwords.ts';
+import { consumeAuthAttempt, clearAuthAttempts } from '../../shared/loginThrottle.js';
 
 // Token opaco de sessão: sem dados do usuário embutidos, só o registro no servidor vale.
 const issueToken = () => `${crypto.randomUUID()}${crypto.randomUUID()}`.replace(/-/g, '');
@@ -24,6 +25,10 @@ export default async function (req) {
   const base44 = createClientFromRequest(req);
   const body = await req.json().catch(() => ({}));
   const action = body?.action;
+  const slowDown = (seconds) => Response.json(
+    { error: 'muitas_tentativas' },
+    { status: 429, headers: { 'Retry-After': String(seconds) } },
+  );
 
   try {
     if (action === 'masterExists') {
@@ -39,6 +44,8 @@ export default async function (req) {
           typeof password !== 'string' || password.length < 6 || password.length > 128) {
         return Response.json({ error: 'dados_invalidos' }, { status: 400 });
       }
+      const attempt = consumeAuthAttempt('activate', cpf);
+      if (!attempt.allowed) return slowDown(attempt.retryAfterSeconds);
       const { Employee } = base44.asServiceRole.entities;
       const candidates = await Employee.filter({ cpf }, 'created_date', 2);
       const employee = candidates[0];
@@ -56,6 +63,7 @@ export default async function (req) {
         ],
       }, { $set: { password_hash: await newPasswordHash(password), terms_accepted: true, terms_accepted_at: new Date().toISOString() } });
       if (result.updated !== 1) return deny();
+      clearAuthAttempts('activate', cpf);
       return Response.json({ ok: true });
     }
 
@@ -90,6 +98,9 @@ export default async function (req) {
       if (!isValidCpf(cpf)) {
         return Response.json({ error: 'cpf_invalido' }, { status: 400 });
       }
+
+      const attempt = consumeAuthAttempt('login', cpf);
+      if (!attempt.allowed) return slowDown(attempt.retryAfterSeconds);
 
       const { items, next_cursor } = await base44.asServiceRole.entities.Employee.filter({ cpf }, { limit: 10 });
       if (next_cursor) return Response.json({error:'cpf_duplicado'}, {status:409});
@@ -132,6 +143,8 @@ export default async function (req) {
         role: emp.access_role || 'funcionario',
         expires_at: expiresAt,
       });
+      // Unlock only after the authenticated session was persisted successfully.
+      clearAuthAttempts('login', cpf);
 
       // Nunca devolve hash de senha.
       return Response.json({
