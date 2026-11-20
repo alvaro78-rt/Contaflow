@@ -16,17 +16,38 @@ const applies = (t, comp) =>
   t.start_competence <= comp && (!t.end_competence || t.end_competence >= comp);
 
 async function calculate({ entities, companyId, actor }, emp, body) {
-  const { competence, payment_date, tax_dependents, paid_days, unpaid_days, dsr_extra, dsr_discount } = body;
+  const { competence } = body;
+  const automatic = body.automatic === true;
   const query = { company_id: companyId, employee_id: emp.id };
   const range = monthRange(competence);
   const closed = new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Recife' }).format(new Date());
+
+  // A tela simples não envia campos financeiros inventados. A função consulta
+  // cadastro, ponto, rubricas e tabela legal. A data do processamento é usada
+  // somente como referência para calcular um RASCUNHO, não como prova de pagamento.
+  const payment_date = automatic ? closed : body.payment_date;
+  const fiscalDependentsUnconfirmed = automatic &&
+    Array.isArray(emp.dependents) && emp.dependents.length > 0;
+  const tax_dependents = automatic ? (fiscalDependentsUnconfirmed ? null : 0) : body.tax_dependents;
+  const paid_days = automatic ? [] : body.paid_days;
+  const unpaid_days = automatic ? [] : body.unpaid_days;
+  const dsr_extra = automatic ? 0 : body.dsr_extra;
+  const dsr_discount = automatic ? 0 : body.dsr_discount;
+  if (fiscalDependentsUnconfirmed) {
+    return incomplete([
+      'Há dependentes cadastrados, mas não é possível presumir quantos são dependentes fiscais. Confira essa informação com o RH antes de calcular.',
+    ]);
+  }
   if (
     range.$lte >= closed || !validDate(payment_date) || payment_date < range.$lte ||
     !Number.isInteger(tax_dependents) ||
-    tax_dependents < 0 || tax_dependents > 99 || body.reviewed_inputs !== true
+    tax_dependents < 0 || tax_dependents > 99 ||
+    (!automatic && body.reviewed_inputs !== true)
   ) {
     return incomplete([
-      'Informe uma competência encerrada, a data de pagamento e os dependentes fiscais. Confirme os dados do período.',
+      automatic
+        ? 'Selecione uma competência encerrada. A data do processamento será usada como referência para o rascunho.'
+        : 'Informe uma competência encerrada, a data de pagamento e os dependentes fiscais. Confirme os dados do período.',
     ]);
   }
   if (
@@ -94,6 +115,16 @@ async function calculate({ entities, companyId, actor }, emp, body) {
   );
   problems.push(...review.problems);
   const { stats } = review;
+  // DSR e faltas sem classificação não podem ser presumidos como zero.
+  // Reutilizamos os zeros somente quando o ponto comprova que não há ocorrência.
+  if (automatic && stats) {
+    if (stats.overtime > 0) {
+      problems.push('Há horas extras sem reflexo de DSR apurado. Concilie os valores com o RH antes de processar.');
+    }
+    if (stats.late > 0 || stats.absences > 0) {
+      problems.push('Há atrasos ou faltas que podem afetar o DSR. Confira o ponto e a apuração antes de processar.');
+    }
+  }
   if (
     ![dsr_extra, dsr_discount].every((v) =>
       Number.isFinite(v) && v >= 0 && Math.abs(v * 100 - Math.round(v * 100)) < .00001
