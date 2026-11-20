@@ -7,6 +7,7 @@ import auth from '../base44/functions/authCpf/entry.ts';
 import { hashPassword } from '../base44/shared/authHelpers.ts';
 import { calcInss, calcIrrf } from '../base44/shared/payrollCalculation.js';
 import { newPasswordHash, verifyPassword } from '../base44/shared/passwords.ts';
+import { authorizeOwner, checkRecoveryKey, attemptRecovery } from '../base44/shared/masterSwap.ts';
 
 async function call(fn, action, fields = {}, token = 'rh') {
   const req = new Request('http://local.test/', {
@@ -415,4 +416,33 @@ Deno.test('ponto parcialmente registrado não vira simulação de frequência ze
   assert.equal(result.status, 422);
   assert.equal(result.preview_only, undefined);
   assert.equal(db.Payroll.length, 0);
+});
+
+Deno.test('recuperação de mestre exige identidade da plataforma e proprietário correto', async () => {
+  assert.equal(authorizeOwner(null, 'owner-user').status, 401);
+  assert.equal(authorizeOwner({ id: 'other-user', role: 'admin' }, 'owner-user').status, 403);
+  assert.equal(authorizeOwner({ id: 'owner-user', role: 'user' }, 'owner-user').status, 403);
+  assert.equal(authorizeOwner({ id: 'owner-user', role: 'admin' }, 'owner-user').ok, true);
+  assert.equal(checkRecoveryKey('', 'example-key').status, 400);
+  assert.equal(checkRecoveryKey('example-key', '').status, 503);
+  assert.equal(checkRecoveryKey('wrong-key', 'example-key').status, 403);
+});
+
+Deno.test('recuperação inválida nunca consulta nem modifica a base de dados', async () => {
+  let accesses = 0;
+  const store = new Proxy({}, { get() { accesses++; throw new Error('Store must not be accessed'); } });
+  const common = {
+    ownerUserId: 'owner-user', expectedKey: 'example-key', suppliedKey: 'example-key',
+    newMaster: { fullName: 'Teste Mestre', cpf: '00000000000', password: 'example-pass' },
+    store, now: Date.now(),
+  };
+  const unauth = await attemptRecovery({ ...common, identity: null });
+  assert.equal(unauth.status, 401);
+  const wrongOwner = await attemptRecovery({ ...common, identity: { id: 'not-owner', role: 'admin' } });
+  assert.equal(wrongOwner.status, 403);
+  const wrongKey = await attemptRecovery({
+    ...common, identity: { id: 'owner-user', role: 'admin' }, suppliedKey: 'wrong-key',
+  });
+  assert.equal(wrongKey.status, 403);
+  assert.equal(accesses, 0);
 });
