@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { RefreshCw } from 'lucide-react';
+import { ArrowUpRight, Building2, Plus, RefreshCw } from 'lucide-react';
 import { MODULES } from '@/lib/modules';
 import { base44 } from '@/api/base44Client';
 import { Button } from '@/components/ui/button';
@@ -8,8 +8,10 @@ import { useSession } from '@/lib/SessionContext';
 import { competenceLabel, money } from '@/lib/format';
 
 const SESSION_ERRORS = ['sessao_invalida', 'sessao_expirada', 'acesso_encerrado', 'conta_desligada'];
+const MANAGER_MODULES = ['/funcionarios/novo', '/funcionarios', '/cargos', '/jornadas', '/ponto', '/folha', '/contracheques'];
 
-// Painel da empresa em uso, lido no servidor com a sessão validada.
+// Painel ContaFlow: números verificados no servidor, módulos e gestão de empresas
+// visíveis sem expor operações de mestre a colaboradores.
 export default function CompanyPanel() {
   const { session, logout } = useSession();
   const navigate = useNavigate();
@@ -32,7 +34,7 @@ export default function CompanyPanel() {
         return;
       }
       setData(null);
-      setError('Não foi possível carregar o painel desta empresa. Nenhum número é exibido como zero.');
+      setError('Não foi possível carregar os dados da empresa. Os valores não serão apresentados como zero.');
     } finally {
       setLoading(false);
     }
@@ -54,53 +56,96 @@ export default function CompanyPanel() {
         ] : []),
       ]
     : [];
+  const visibleModules = session?.role === 'gerente'
+    ? MODULES.filter((m) => MANAGER_MODULES.includes(m.path))
+    : MODULES;
 
   return (
     <div className="space-y-8">
-      <div className="border-b border-border pb-6">
-        <p className="mb-2 font-mono text-xs text-emerald-700">[EMPRESA EM USO]</p>
-        <h1 className="text-3xl font-semibold tracking-tight md:text-4xl">
-          {data?.company?.name || session?.company_name || 'Empresa'}
-        </h1>
-        <p className="mt-2 text-sm text-muted-foreground">
-          {data ? `Perfil ${data.profile.name ? `de ${data.profile.name}` : ''} · competência ${competenceLabel(data.competence)}` : 'Lendo os dados da empresa…'}
-        </p>
-      </div>
+      <section className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-950 via-blue-950 to-blue-900 p-6 text-white shadow-sm sm:p-9">
+        <div className="pointer-events-none absolute -right-16 -top-24 h-72 w-72 rounded-full border border-white/10" aria-hidden="true" />
+        <div className="relative flex flex-col items-start justify-between gap-6 lg:flex-row lg:items-end">
+          <div>
+            <p className="mb-3 font-mono text-[11px] font-medium uppercase tracking-[0.2em] text-sky-200">ContaFlow · Painel administrativo</p>
+            <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
+              {data?.company?.name || session?.company_name || 'Sua empresa'}
+            </h1>
+            <p className="mt-3 max-w-xl text-sm leading-relaxed text-slate-200">
+              Funcionários, ponto, folha de pagamento e contracheques em um só lugar.
+            </p>
+            <p className="mt-3 text-xs text-sky-200">
+              {data ? `Perfil de ${data.profile?.name || session?.name || 'gestão'} · Competência ${competenceLabel(data.competence)}` : 'Consultando informações da empresa…'}
+            </p>
+          </div>
+          {session?.master && (
+            <div className="flex w-full flex-wrap gap-2 lg:w-auto">
+              <Link
+                to="/empresas"
+                className="inline-flex items-center justify-center gap-2 rounded-lg border border-white/30 bg-white/10 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-white/20"
+              >
+                <Building2 className="h-4 w-4" /> Minhas empresas
+              </Link>
+              <Link
+                to="/empresas#criar"
+                className="inline-flex items-center justify-center gap-2 rounded-lg bg-white px-4 py-2.5 text-sm font-semibold text-blue-950 transition-colors hover:bg-sky-100"
+              >
+                <Plus className="h-4 w-4" /> Criar empresa
+              </Link>
+            </div>
+          )}
+        </div>
+      </section>
 
-      {loading && !data && <p className="text-sm text-muted-foreground">Carregando os números desta empresa…</p>}
-
-      {error && (
-        <div className="space-y-3">
-          <p className="border border-destructive bg-red-50 px-3 py-2 text-sm text-destructive">{error}</p>
+      <section aria-label="Resumo da empresa" className="space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold">Visão geral</h2>
+            <p className="text-sm text-muted-foreground">Indicadores confirmados pelo servidor, sem valores presumidos.</p>
+          </div>
           <Button size="sm" variant="outline" onClick={load} disabled={loading}>
-            <RefreshCw className="h-3.5 w-3.5" /> {loading ? 'Tentando…' : 'Tentar novamente'}
+            <RefreshCw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+            Atualizar
           </Button>
         </div>
-      )}
+        {loading && !data && <p className="text-sm text-muted-foreground">Carregando os números desta empresa…</p>}
+        {error && (
+          <p role="alert" className="rounded-lg border border-destructive/30 bg-red-50 px-4 py-3 text-sm text-destructive">
+            {error}
+          </p>
+        )}
+        {stats.length > 0 && (
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {stats.map(([label, value]) => (
+              <div key={label} className="rounded-xl border border-border bg-card p-5 shadow-sm">
+                <p className="font-mono text-xl font-semibold tracking-tight sm:text-2xl">{value}</p>
+                <p className="mt-2 text-xs text-muted-foreground">{label}</p>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
 
-      {stats.length > 0 && (
-        <div className="grid grid-cols-2 gap-px border border-border bg-border md:grid-cols-4">
-          {stats.map(([k, v]) => (
-            <div key={k} className="bg-card px-4 py-4">
-              <p className="font-mono text-xl font-semibold">{v}</p>
-              <p className="text-xs text-muted-foreground">{k}</p>
-            </div>
+      <section aria-label="Módulos do ContaFlow" className="space-y-4">
+        <div>
+          <h2 className="text-lg font-semibold">Módulos do sistema</h2>
+          <p className="text-sm text-muted-foreground">Escolha a atividade que deseja realizar.</p>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {visibleModules.map(({ path, code, title, desc, icon: Icon }) => (
+            <Link key={path} to={path} className="group rounded-xl border border-border bg-card p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md">
+              <div className="flex items-center justify-between">
+                <span className="grid h-10 w-10 place-items-center rounded-lg bg-blue-50 text-blue-700">
+                  <Icon className="h-5 w-5" strokeWidth={1.7} />
+                </span>
+                <ArrowUpRight className="h-4 w-4 text-muted-foreground transition-colors group-hover:text-primary" />
+              </div>
+              <h3 className="mt-4 font-semibold">{title}</h3>
+              <p className="mt-1 text-sm leading-relaxed text-muted-foreground">{desc}</p>
+              <span className="mt-4 block font-mono text-[10px] text-muted-foreground">{code}</span>
+            </Link>
           ))}
         </div>
-      )}
-
-      <div className="grid gap-px border border-border bg-border sm:grid-cols-2 lg:grid-cols-3">
-        {MODULES.filter(m => session?.role !== 'gerente' || ['/funcionarios/novo','/funcionarios','/cargos','/jornadas','/ponto','/folha','/contracheques'].includes(m.path)).map(({ path, code, title, desc, icon: Icon }) => (
-          <Link key={path} to={path} className="group bg-card p-6 transition-colors hover:bg-accent">
-            <div className="mb-8 flex items-center justify-between">
-              <Icon className="h-6 w-6 text-primary group-hover:text-emerald-700" strokeWidth={1.5} />
-              <span className="font-mono text-xs text-muted-foreground">[{code}]</span>
-            </div>
-            <h2 className="font-semibold">{title}</h2>
-            <p className="mt-1 text-sm text-muted-foreground">{desc}</p>
-          </Link>
-        ))}
-      </div>
+      </section>
     </div>
   );
 }
