@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { LogOut, RefreshCw } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
+import { ArrowLeft, Building2, LogOut, RefreshCw } from 'lucide-react';
 import { base44 } from '@/api/base44Client';
 import { Button } from '@/components/ui/button';
 import PageHeader from '@/components/PageHeader';
@@ -131,10 +131,15 @@ export default function Companies() {
       <header className="border-b border-border bg-background/90 backdrop-blur">
         <div className="mx-auto flex h-14 max-w-4xl items-center justify-between gap-3 px-5">
           <span className="flex items-center gap-2 font-semibold tracking-tight">
-            <span className="grid h-6 w-6 place-items-center bg-primary font-mono text-[11px] text-primary-foreground">F</span>
-            <span>Folha<span className="text-emerald-600">/</span>Ledger</span>
+            <span className="grid h-7 w-7 place-items-center rounded-lg bg-primary font-mono text-[12px] font-bold text-primary-foreground">C</span>
+            <span>Conta<span className="text-emerald-600">Flow</span></span>
           </span>
           <div className="flex items-center gap-3">
+            {session?.company_id && (
+              <Link to="/" className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-2.5 py-1.5 text-xs font-medium hover:border-primary/40">
+                <ArrowLeft className="h-3.5 w-3.5" /> Voltar ao painel
+              </Link>
+            )}
             <span className="hidden truncate text-xs text-muted-foreground sm:inline">{session?.name}</span>
             <button onClick={leave} className="flex items-center gap-1.5 border border-border bg-card px-2.5 py-1.5 text-xs font-medium transition-colors hover:border-destructive hover:text-destructive">
               <LogOut className="h-3.5 w-3.5" /> Sair
@@ -146,7 +151,7 @@ export default function Companies() {
         <PageHeader
           code="MESTRE"
           title="Minhas empresas"
-          description="Crie suas empresas e escolha qual painel abrir."
+          description="Crie, acesse, desative e reative suas próprias empresas. Cadastros e históricos são preservados."
         />
         {notice && <p role="status" className="mb-3 text-sm text-emerald-700">{notice}</p>}
         {actionError && <p role="alert" className="mb-3 text-sm text-destructive">{actionError}</p>}
@@ -190,8 +195,8 @@ export default function Companies() {
             ))}
           </div>
           <div className="space-y-4">
-            <form className="space-y-4 border border-border bg-card p-5" onSubmit={event => { event.preventDefault(); manage('create'); }}>
-              <h2 className="font-semibold">Criar empresa</h2>
+            <form id="criar" className="scroll-mt-24 space-y-4 rounded-xl border border-border bg-card p-5 shadow-sm" onSubmit={event => { event.preventDefault(); manage('create'); }}>
+              <h2 className="flex items-center gap-2 font-semibold"><Building2 className="h-4 w-4 text-primary" /> Criar empresa</h2>
               <Field label="Nome da empresa"><Input required minLength={2} maxLength={150} value={name} onChange={event => setName(event.target.value)} /></Field>
               <p className="text-xs text-muted-foreground">Sua conta mestre será o dono desta empresa.</p>
               <Button type="submit" disabled={busy || Boolean(entrando) || name.trim().length < 2}>Criar empresa</Button>
