@@ -13,7 +13,7 @@ import { consistentReceipt, reviewAttendance, verifiedTable } from '../../shared
 const incomplete = (problems) => Response.json({ error: 'cadastro_incompleto', problems }, { status: 422 });
 const localToday = () => new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Recife' }).format(new Date());
 // Marca da lógica ativa, consultável somente com uma sessão válida.
-const PAYROLL_SERVICE_RELEASE = '2026-11-20-payroll-attendance-v1';
+const PAYROLL_SERVICE_RELEASE = '2026-11-20-payroll-stage-diagnostics-v2';
 
 // Never treat an unclassified dependent as a tax dependent.
 function savedTaxDependents(employee) {
@@ -60,7 +60,7 @@ const applies = (t, comp) =>
   t.active !== false && validMonth(t.start_competence) &&
   t.start_competence <= comp && (!t.end_competence || t.end_competence >= comp);
 
-async function calculate({ entities, companyId, actor }, emp, body) {
+async function calculate({ entities, companyId, actor }, emp, body, setStage = () => {}) {
   const inputs = automaticReview(emp, body);
   const { competence, payment_date, tax_dependents, paid_days, unpaid_days, dsr_extra, dsr_discount } = inputs;
   const query = { company_id: companyId, employee_id: emp.id };
@@ -87,12 +87,14 @@ async function calculate({ entities, companyId, actor }, emp, body) {
     ]);
   }
   const admittedThisMonth = emp.admission_date > range.$gte;
+  setStage('historico_legado');
   const legacy = await Promise.all([
     hasUnscopedHistory(entities.TimeRecord, { employee_id: emp.id, date: range }),
     hasUnscopedHistory(entities.Vacation, { employee_id: emp.id }),
     hasUnscopedHistory(entities.Termination, { employee_id: emp.id }),
   ]);
   if (legacy.some(Boolean)) return fail(409, 'historico_sem_empresa');
+  setStage('consultas_competencia');
   const [position, schedule, marks, rubrics, tables, vacations, terminations] = await Promise.all([
     scopedRecord(entities.Position, emp.position_id, companyId),
     scopedRecord(entities.WorkSchedule, emp.schedule_id, companyId),
@@ -138,6 +140,7 @@ async function calculate({ entities, companyId, actor }, emp, body) {
   // Mostre somente uma prévia NÃO SALVA, nunca uma folha de pagamento aprovada/finalizável.
   if (inputs.provisional && marks.items.length === 0) {
     if (problems.length) return incomplete(problems);
+    setStage('previa_calculo');
     const estimate = buildPayroll({
       employee: emp,
       positionName: position.name,
@@ -165,6 +168,7 @@ async function calculate({ entities, companyId, actor }, emp, body) {
   const calendarPaidDays = inputs.provisional
     ? paidNationalHolidays(competence, schedule, marks.items, emp.admission_date)
     : paid_days;
+  setStage('conferencia_ponto');
   const review = reviewAttendance(
     marks.items,
     schedule,
@@ -203,6 +207,7 @@ async function calculate({ entities, companyId, actor }, emp, body) {
   if (problems.length) return incomplete(problems);
   stats.dsrExtra = dsr_extra;
   stats.dsrDiscount = dsr_discount;
+  setStage('motor_calculo');
   const data = buildPayroll({
     employee: emp,
     positionName: position.name,
@@ -215,6 +220,7 @@ async function calculate({ entities, companyId, actor }, emp, body) {
     admissionDate: emp.admission_date,
   });
   if (!consistentReceipt(data)) return fail(422, 'valores_inconsistentes');
+  setStage('gravacao_folha');
   return ok({
     payroll: await entities.Payroll.create({
       ...data,
@@ -239,8 +245,11 @@ async function calculate({ entities, companyId, actor }, emp, body) {
 
 export default async function (req) {
   if (req.method !== 'POST') return fail(405, 'metodo_invalido');
+  let stage = 'requisicao';
+  const setStage = (next) => { stage = next; };
   try {
     const body = await req.json();
+    setStage('autorizacao');
     const admin = await employeeAdmin(createClientFromRequest(req), body?.token);
     if (admin.response) return admin.response;
     const { companyId, entities, actor } = admin;
@@ -255,6 +264,7 @@ export default async function (req) {
     if (transition && !target) return fail(404, 'folha_inexistente');
     const competence = transition ? target.competence : body.competence;
     if (!validMonth(competence)) return fail(400, 'competencia_invalida');
+    setStage('funcionario');
     const employee = await scopedRecord(
       entities.Employee,
       transition ? target.employee_id : body.employee_id,
@@ -263,16 +273,18 @@ export default async function (req) {
     if (!employee || employee.access_role === 'master') return fail(404, 'funcionario_inexistente');
     const query = { company_id: companyId, employee_id: employee.id, competence };
     const process = async () => {
+      setStage('historico_folha');
       if (await hasUnscopedHistory(entities.Payroll, { employee_id: employee.id, competence })) {
         return fail(409, 'historico_sem_empresa');
       }
+      setStage('consulta_folha');
       const rows = await entities.Payroll.filter(query, { limit: 2 });
       if (rows.next_cursor || rows.items.length > 1) return fail(409, 'folhas_duplicadas');
       const row = rows.items[0];
       if (action === 'view') return ok({ payroll: row || null });
       if (action === 'calculate') {
         if (row) return ok({ payroll: row, existing: true, existing_final: row.status === 'finalizada' });
-        return await calculate(admin, employee, body);
+        return await calculate(admin, employee, body, setStage);
       }
       if (!row || row.id !== target.id || row.status !== (action === 'approve' ? 'rascunho' : 'aprovada')) {
         return fail(409, 'situacao_invalida');
@@ -306,14 +318,25 @@ export default async function (req) {
           reviewed_at: now,
         }
         : { status: 'finalizada', finalized_at: now, finalizer_id: actor.id };
+      setStage('transicao_status');
       const result = await entities.Payroll.updateMany({ ...query, id: row.id, status: row.status }, {
         $set: fields,
       });
       if (result.updated !== 1) return fail(409, 'situacao_invalida');
       return ok({ payroll: { ...row, ...fields } });
     };
-    return action === 'view' ? await process() : await withEmployeeLock(entities, employee, process);
-  } catch {
-    return fail(500, 'falha_servidor');
+    if (action === 'view') return await process();
+    setStage('bloqueio_funcionario');
+    return await withEmployeeLock(entities, employee, process);
+  } catch (error) {
+    // Não registrar payload, CPF, salário, senha ou token. A etapa é uma enumeração
+    // interna fixa; o cliente recebe apenas um código seguro para localizar o log.
+    console.error('ContaFlow payrollService erro interno', {
+      stage, type: error instanceof Error ? error.name : 'erro_desconhecido',
+      status: Number.isInteger(error?.status) ? error.status : null,
+    });
+    return Response.json({
+      error: 'falha_servidor', stage, release: PAYROLL_SERVICE_RELEASE,
+    }, { status: 500 });
   }
 }
