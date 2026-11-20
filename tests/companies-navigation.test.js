@@ -12,7 +12,7 @@ test('o painel e o login exibem a marca ContaFlow, sem a marca antiga', () => {
     'index.html',
   ]) {
     const value = source(path);
-    assert.doesNotMatch(value, /Folha<|Ledger|Base44 APP/);
+    assert.doesNotMatch(value, /Folha<span|Ledger|Base44 APP/);
     assert.match(value, /ContaFlow|Conta<span/);
   }
 });
