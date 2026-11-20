@@ -7,7 +7,7 @@ import { ROLE_LABEL } from '@/lib/auth';
 
 export default function Layout() {
   const { pathname } = useLocation();
-  const { session, login, logout } = useSession();
+  const { session, logout } = useSession();
   const navigate = useNavigate();
   const section = MODULES.find((m) => pathname === m.path || (m.path !== '/' && pathname.startsWith(m.path + '/')));
   const leave = async () => {
@@ -15,24 +15,18 @@ export default function Layout() {
     catch { /* A sessão local também precisa ser encerrada quando o servidor está indisponível. */ }
     finally { logout(); navigate('/login', { replace: true }); }
   };
-  // Volta para a escolha de empresas: limpa a empresa em uso também no servidor.
-  const switchCompany = async () => {
-    try {
-      await base44.functions.invoke('enterCompany', { token: session.token, company_id: '' });
-    } catch {
-      // Sem sessão válida, o login resolve; a navegação acontece de qualquer forma.
-    }
-    login({ ...session, company_id: '', company_name: '' });
-    navigate('/empresas');
-  };
+  // A lista de empresas pertence à conta mestre e não exige limpar a empresa
+  // no servidor. A troca efetiva só ocorre ao confirmar "Entrar" na lista.
+  // Manter a sessão evita bloqueios falsos em caso de falha de rede.
+  const switchCompany = () => navigate('/empresas');
 
   return (
     <div className="min-h-screen">
       <header className="sticky top-0 z-30 border-b border-border bg-background/90 backdrop-blur print:hidden">
         <div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-3 px-5">
           <Link to="/" className="flex shrink-0 items-center gap-2 font-semibold tracking-tight">
-            <span className="grid h-6 w-6 place-items-center bg-primary font-mono text-[11px] text-primary-foreground">F</span>
-            <span className="hidden sm:inline">Folha<span className="text-emerald-600">/</span>Ledger</span>
+            <span className="grid h-7 w-7 place-items-center rounded-lg bg-primary font-mono text-[12px] font-bold text-primary-foreground">C</span>
+            <span className="hidden sm:inline">Conta<span className="text-emerald-600">Flow</span></span>
           </Link>
           <div className="flex min-w-0 items-center gap-3">
             {pathname !== '/' && (
@@ -54,7 +48,7 @@ export default function Layout() {
           <span>{session?.company_name || 'Conta mestre'}</span>
           {section && <span>· [{section.code}] {section.title}</span>}
           {session?.master && session?.company_id && (
-            <button onClick={switchCompany} className="underline hover:text-foreground">Trocar empresa</button>
+            <button onClick={switchCompany} className="font-medium underline underline-offset-2 hover:text-foreground">Minhas empresas · Criar empresa</button>
           )}
         </div>
       </header>
