@@ -7,6 +7,7 @@ import Field from '@/components/Field';
 import { useSession } from '@/lib/SessionContext';
 import { useServices } from '@/lib/ServicesContext';
 import { formatCpf, onlyDigits } from '@/lib/format';
+import { describeLoginFailure } from '@/lib/loginDiagnostics';
 
 const LOGIN_ERRORS = {
   empresa_inativa: 'Esta empresa está inativa. Fale com o responsável pelo sistema.',
@@ -24,6 +25,7 @@ export default function PortalLogin({ afterLogin }) {
   const services = useServices();
   const [form, setForm] = useState({ cpf: '', password: '' });
   const [error, setError] = useState('');
+  const [diagnostic, setDiagnostic] = useState('');
   const [busy, setBusy] = useState(false);
   const [noMaster, setNoMaster] = useState(false);
   const [sessaoExpirada, setSessaoExpirada] = useState(false);
@@ -43,6 +45,7 @@ export default function PortalLogin({ afterLogin }) {
   const submit = async (e) => {
     e.preventDefault();
     setError('');
+    setDiagnostic('');
     const cpf = onlyDigits(form.cpf);
     if (cpf.length !== 11) return setError('Informe os 11 dígitos do CPF.');
     setBusy(true);
@@ -75,7 +78,15 @@ export default function PortalLogin({ afterLogin }) {
       navigate('/', { replace: true });
     } catch (err) {
       const code = err?.data?.error ?? err?.response?.data?.error;
-      setError(Object.hasOwn(LOGIN_ERRORS, code) ? LOGIN_ERRORS[code] : 'Não foi possível verificar o acesso no servidor. Tente entrar novamente.');
+      if (Object.hasOwn(LOGIN_ERRORS, code)) {
+        setError(LOGIN_ERRORS[code]);
+        // Evita mostrar detalhes do servidor quando se trata de credenciais.
+        if (code === 'muitas_tentativas') setDiagnostic('authCpf · HTTP 429');
+      } else {
+        const details = describeLoginFailure(err);
+        setError(details.message);
+        setDiagnostic(details.diagnostic);
+      }
       setBusy(false);
     }
   };
@@ -102,7 +113,12 @@ export default function PortalLogin({ afterLogin }) {
             Gerente cadastrado com sucesso. Entre com seu CPF e senha.
           </p>
         )}
-        {error && <p className="border border-destructive bg-red-50 px-3 py-2 text-sm text-destructive">{error}</p>}
+        {error && (
+          <div role="alert" className="space-y-1 border border-destructive bg-red-50 px-3 py-2 text-sm text-destructive">
+            <p>{error}</p>
+            {diagnostic && <p className="font-mono text-xs">{diagnostic}</p>}
+          </div>
+        )}
         <Button type="submit" className="w-full" disabled={busy}>{busy ? 'Verificando…' : 'Entrar'}</Button>
         <Button asChild variant="outline" className="w-full"><Link to="/cadastro">Cadastrar-se</Link></Button>
         {noMaster && (
