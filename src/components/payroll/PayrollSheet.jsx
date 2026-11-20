@@ -29,6 +29,13 @@ export default function PayrollSheet({ payroll: p }) {
   const t = p.time_summary || {};
   return (
     <div className="space-y-4">
+      {p.preview_only && (
+        <div role="alert" className="border border-amber-600 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+          <strong>SIMULAÇÃO — NÃO É FOLHA DE PAGAMENTO.</strong>
+          {' '}Não há ponto registrado para esta competência. Faltas, atrasos, extras e reflexos não foram apurados;
+          os valores abaixo são uma estimativa que não foi salva e não pode ser aprovada ou paga.
+        </div>
+      )}
       <div className="grid gap-px border border-border bg-border sm:grid-cols-4">
         {[['Funcionário', p.employee_name], ['CPF', formatCpf(p.employee_cpf)], ['Cargo', p.position_name || '—'], ['Competência', competenceLabel(p.competence)]].map(([k, v]) => (
           <div key={k} className="bg-card px-4 py-3">
@@ -37,9 +44,13 @@ export default function PayrollSheet({ payroll: p }) {
           </div>
         ))}
       </div>
-      <p className="text-xs text-muted-foreground">
-        Ponto do período: {fmtMin(t.worked || 0)}h trabalhadas · {t.absences || 0} falta(s) · {fmtMin(t.late || 0)}h de atraso · {fmtMin(t.overtime || 0)}h extras
-      </p>
+      {p.attendance_pending ? (
+        <p className="text-xs font-medium text-amber-900">Ponto do período: não apurado. Não é possível confirmar dias trabalhados, faltas ou horas extras.</p>
+      ) : (
+        <p className="text-xs text-muted-foreground">
+          Ponto do período: {fmtMin(t.worked || 0)}h trabalhadas · {t.absences || 0} falta(s) · {fmtMin(t.late || 0)}h de atraso · {fmtMin(t.overtime || 0)}h extras
+        </p>
+      )}
       {p.calc_memory && (
         <p className="text-xs text-muted-foreground">
           Tabela legal: {p.legal_table_label || '—'} · Base INSS {money(p.calc_memory.inss_base)} · Base IRRF {money(p.calc_memory.irrf_base)} ({p.calc_memory.irrf_dependents || 0} dependente(s)) · FGTS {((p.calc_memory.fgts_rate || 0) * 100).toFixed(0)}% sobre {money(p.calc_memory.fgts_base)}
@@ -57,7 +68,7 @@ export default function PayrollSheet({ payroll: p }) {
       )}
       <div className="flex items-end justify-between border border-emerald-600 bg-accent px-5 py-4">
         <div>
-          <p className="text-xs uppercase tracking-wide text-emerald-800">Salário líquido</p>
+          <p className="text-xs uppercase tracking-wide text-emerald-800">{p.preview_only ? 'Valor líquido estimado — não pagar' : 'Salário líquido'}</p>
           <p className="text-xs text-emerald-800/70">Proventos − Descontos · Salário-base {money(p.base_salary)}</p>
         </div>
         <p className="font-mono text-3xl font-semibold text-emerald-700">{money(p.net_salary)}</p>
