@@ -94,7 +94,7 @@ export default async function (req) {
       payroll,
       read_at: new Date().toISOString(),
     });
-  } catch (error) {
-    return Response.json({ error: 'falha_servidor', message: error.message }, { status: 500 });
+  } catch {
+    return Response.json({ error: 'falha_servidor' }, { status: 500 });
   }
 }
