@@ -21,6 +21,8 @@ jobs:
           node-version: '22'
           cache: npm
       - run: npm ci
+      - name: Auditoria de dependencias com vulnerabilidades altas
+        run: npm audit --audit-level=high
       - name: Testes do frontend
         run: node --test tests/*.test.js
       - name: Lint
