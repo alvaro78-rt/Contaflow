@@ -1,14 +1,19 @@
 import { createClient } from '@base44/sdk';
 import { appParams } from '@/lib/app-params';
+import { resolveBase44BackendUrl } from '@/lib/base44BackendUrl';
 
 const { appId, token, functionsVersion, appBaseUrl } = appParams;
+const serverUrl = resolveBase44BackendUrl({
+  pageOrigin: typeof window === 'undefined' ? '' : window.location.origin,
+  configuredUrl: appBaseUrl,
+});
 
 const client = createClient({
   appId,
   token,
   functionsVersion,
-  // Em hospedagem externa, as chamadas precisam chegar ao backend Base44.
-  serverUrl: appBaseUrl || 'https://app.base44.com',
+  // Funções devem passar pelo domínio publicado do app, não por app.base44.com.
+  serverUrl,
   appBaseUrl
 });
 
