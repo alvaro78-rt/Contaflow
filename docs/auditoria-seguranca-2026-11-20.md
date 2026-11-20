@@ -1,3 +1,24 @@
+# Atualização de autenticação — 20/11/2026
+
+A auditoria Base44 identificou **dois alertas no mesmo arquivo**, `base44/functions/authCpf/entry.ts`:
+
+1. **`masterExists` disponível sem login:** acesso intencional para determinar se o fluxo de cadastro inicial deve aparecer. A resposta revela apenas um booleano (instalação provisionada ou não), sem registros de empregados. Não se pode exigir autenticação Base44 em toda a função, pois isso impediria o login por CPF e a ativação pré-login. É um risco residual que precisa ser aceito ou alterado em conjunto com o design de cadastro.
+2. **Login sem bloqueio progressivo:** corrigido parcialmente com uma proteção que contabiliza tentativas de login e ativação antes de verificar credenciais e retorna `429` e `Retry-After` depois de cinco tentativas. O contador é limpo após login bem-sucedido e é limitado no uso de memória. **Limitação:** o contador existe apenas na instância de função que atende à solicitação. Para mitigação robusta e consistente entre réplicas, é necessário um controle distribuído pela plataforma Base44 ou um armazenamento de tentativas dedicado e auditado.
+
+Código integrado na `main` no commit `3643cade30fababaa885d3bb160a863de9bfd052`, por meio do PR [#7](https://github.com/alvaro78-rt/Contaflow/pull/7).
+
+**Testes:** 28 de backend e 7 de interface (**35/35 aprovados**), typecheck/lint/build aprovados e `npm audit` com zero vulnerabilidades conhecidas no repositório. O teste de autenticação verifica bloqueio após tentativas inválidas, limpeza do contador e login correto com sessão persistida em memória.
+
+**Publicação:** frontend Vercel deploy `dpl_5uD569TJCpvS1fExYdKyFBUsa4ja` `READY`, mas `authCpf` no Base44 **ainda não foi atualizado nesta revisão**. O deployment seletivo de `authCpf` deve incluir `base44/shared/loginThrottle.js`. Uma publicação do app no editor Base44 é necessária para garantir que a versão atual chegue ao endpoint público; antes, conferir pendências na branch principal e no painel Segurança.
+
+**Dependências:** o GitHub não contém `zod` no manifesto ou lockfile, e utiliza Vite 8.3.8. Os alertas do scanner Base44 podem permanecer se o editor estiver usando outras versões; o ajuste na Vercel sozinho não atualiza as dependências do editor.
+
+**Folha de pagamento:** o erro `ponto_nao_conferido` vinha de um commit antigo de `payrollService`, mas ainda foi observado no endpoint público Base44 após deploys seletivos. É necessário verificar/publicar a versão ativa na plataforma sem sincronizações destrutivas de entidades.
+
+**Nenhuma empresa, funcionário, sessão, folha, ponto, cadastro ou histórico foi modificado por esta revisão.**
+
+---
+
 # ContaFlow — revisão de segurança de 20/11/2026
 
 ## Origem
