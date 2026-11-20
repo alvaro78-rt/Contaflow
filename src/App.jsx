@@ -87,6 +87,11 @@ function App() {
 
   return (
     <SessionProvider>
+      {import.meta.env.VITE_CONTAFLOW_HOMOLOGACAO === true && (
+        <p className="bg-amber-100 p-2 text-center text-sm text-amber-950">
+          Homologação local · dados fictícios
+        </p>
+      )}
       <AuthProvider>
         <QueryClientProvider client={queryClientInstance}>
           <Router>

@@ -10,6 +10,8 @@ export function matches(row, query) {
         switch (op) {
           case '$exists':
             return (row[key] !== undefined) === value;
+          case '$in':
+            return value.includes(row[key]);
           case '$ne':
             return row[key] !== value;
           case '$gte':
