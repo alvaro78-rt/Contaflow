@@ -39,7 +39,7 @@ export default function PayrollGenerate() {
       const label = state === 'current'
         ? 'Servidor de folha atualizado e acessível. Verificação sem alteração de dados.'
         : state === 'outdated'
-          ? 'Versão antiga do backend detectada. Publique payrollService v2 no Base44 antes de processar.'
+          ? 'Versão antiga do backend detectada. Atualize a função payrollService no Base44 antes de processar.'
           : 'Não foi possível confirmar a versão do backend. Não processe a folha.';
       setServerStatus(label);
       return state === 'current';
@@ -47,7 +47,7 @@ export default function PayrollGenerate() {
       const state = classifyPayrollRelease(null, error);
       const status = error?.response?.status ?? error?.status;
       setServerStatus(state === 'outdated'
-        ? 'Backend antigo: a verificação de versão não está disponível. Publique payrollService v2.'
+        ? 'Backend antigo: a verificação de versão não está disponível. Atualize a função payrollService no Base44.'
         : 'Backend não confirmado (HTTP ' + (Number.isInteger(status) ? status : 'indisponível') + '). Não processe a folha.');
       return false;
     } finally {

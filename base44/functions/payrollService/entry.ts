@@ -12,8 +12,7 @@ import { consistentReceipt, reviewAttendance, verifiedTable } from '../../shared
 
 const incomplete = (problems) => Response.json({ error: 'cadastro_incompleto', problems }, { status: 422 });
 const localToday = () => new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Recife' }).format(new Date());
-// Marca da lógica ativa, consultável somente com uma sessão válida.
-const PAYROLL_SERVICE_RELEASE = '2026-11-20-payroll-stage-diagnostics-v2';
+const PAYROLL_SERVICE_RELEASE = '2026-11-20-payroll-draft-review-v3';
 
 // Never treat an unclassified dependent as a tax dependent.
 function savedTaxDependents(employee) {
@@ -60,7 +59,7 @@ const applies = (t, comp) =>
   t.active !== false && validMonth(t.start_competence) &&
   t.start_competence <= comp && (!t.end_competence || t.end_competence >= comp);
 
-async function calculate({ entities, companyId, actor }, emp, body, setStage = () => {}) {
+async function calculate({ entities, companyId, actor }, emp, body, setStage, draft = null) {
   const inputs = automaticReview(emp, body);
   const { competence, payment_date, tax_dependents, paid_days, unpaid_days, dsr_extra, dsr_discount } = inputs;
   const query = { company_id: companyId, employee_id: emp.id };
@@ -221,53 +220,64 @@ async function calculate({ entities, companyId, actor }, emp, body, setStage = (
   });
   if (!consistentReceipt(data)) return fail(422, 'valores_inconsistentes');
   setStage('gravacao_folha');
-  return ok({
-    payroll: await entities.Payroll.create({
-      ...data,
-      ...query,
-      input_review: {
-        payment_date: inputs.provisional ? '' : payment_date,
-        calculation_reference_date: inputs.provisional ? payment_date : null,
-        payment_date_confirmed: !inputs.provisional,
-        tax_dependents,
-        paid_days: calendarPaidDays,
-        unpaid_days,
-        dsr_extra,
-        dsr_discount,
-        actor_id: actor.id,
-        source: inputs.provisional ? 'automatic' : 'manual',
-        admission_partial: admittedThisMonth,
-        version: inputs.provisional ? 2 : 1,
-      },
-    }),
-  });
+  const fields = {
+    ...data,
+    input_review: {
+      payment_date: inputs.provisional ? '' : payment_date,
+      calculation_reference_date: inputs.provisional ? payment_date : null,
+      payment_date_confirmed: !inputs.provisional,
+      tax_dependents,
+      paid_days: calendarPaidDays,
+      unpaid_days,
+      dsr_extra,
+      dsr_discount,
+      actor_id: actor.id,
+      source: inputs.provisional ? 'automatic' : 'manual',
+      admission_partial: admittedThisMonth,
+      version: inputs.provisional ? 2 : 1,
+    },
+  };
+  if (draft) {
+    const result = await entities.Payroll.updateMany({
+      ...query, id: draft.id, competence, status: 'rascunho',
+    }, { $set: fields });
+    if (result.updated !== 1) return fail(409, 'situacao_invalida');
+    return ok({ payroll: { ...draft, ...fields } });
+  }
+  return ok({ payroll: await entities.Payroll.create({ ...fields, ...query }) });
 }
 
 export default async function (req) {
-  if (req.method !== 'POST') return fail(405, 'metodo_invalido');
-  let stage = 'requisicao';
+  if (req.method !== 'POST') {
+    return Response.json({ error: 'metodo_invalido' }, {
+      status: 405,
+      headers: { Allow: 'POST', 'Cache-Control': 'no-store', 'X-ContaFlow-Payroll-Release': PAYROLL_SERVICE_RELEASE },
+    });
+  }
+  const body = await req.json().catch(() => null);
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return fail(400, 'requisicao_invalida');
+  let stage = 'autorizacao';
   const setStage = (next) => { stage = next; };
   try {
-    const body = await req.json();
-    setStage('autorizacao');
     const admin = await employeeAdmin(createClientFromRequest(req), body?.token);
     if (admin.response) return admin.response;
     const { companyId, entities, actor } = admin;
     const action = body.action;
     // Diagnóstico autenticado, somente leitura: não acessa ponto nem gera folha.
     if (action === 'release') return ok({ service: 'payrollService', release: PAYROLL_SERVICE_RELEASE, attendance_preview: true });
-    if (!['calculate', 'view', 'approve', 'finalize'].includes(action)) return fail(400, 'acao_invalida');
+    if (!['calculate', 'view', 'confirmPaymentDate', 'approve', 'finalize'].includes(action)) return fail(400, 'acao_invalida');
     if (actor.access_role === 'gerente' && action !== 'calculate') return fail(403, 'sem_permissao');
     if (action !== 'view' && body.expected_company_id !== companyId) return fail(409, 'empresa_alterada');
-    const transition = action === 'approve' || action === 'finalize';
-    const target = transition ? await scopedRecord(entities.Payroll, body.payroll_id, companyId) : null;
-    if (transition && !target) return fail(404, 'folha_inexistente');
-    const competence = transition ? target.competence : body.competence;
+    const existingOperation = ['confirmPaymentDate', 'approve', 'finalize'].includes(action);
+    setStage('consulta_folha');
+    const target = existingOperation ? await scopedRecord(entities.Payroll, body.payroll_id, companyId) : null;
+    if (existingOperation && !target) return fail(404, 'folha_inexistente');
+    const competence = existingOperation ? target.competence : body.competence;
     if (!validMonth(competence)) return fail(400, 'competencia_invalida');
     setStage('funcionario');
     const employee = await scopedRecord(
       entities.Employee,
-      transition ? target.employee_id : body.employee_id,
+      existingOperation ? target.employee_id : body.employee_id,
       companyId,
     );
     if (!employee || employee.access_role === 'master') return fail(404, 'funcionario_inexistente');
@@ -286,8 +296,24 @@ export default async function (req) {
         if (row) return ok({ payroll: row, existing: true, existing_final: row.status === 'finalizada' });
         return await calculate(admin, employee, body, setStage);
       }
-      if (!row || row.id !== target.id || row.status !== (action === 'approve' ? 'rascunho' : 'aprovada')) {
+      if (!row || row.id !== target.id || row.status !== (action === 'finalize' ? 'aprovada' : 'rascunho')) {
         return fail(409, 'situacao_invalida');
+      }
+      if (action === 'confirmPaymentDate') {
+        const review = row.input_review;
+        if (review?.version !== 2 || review.payment_date_confirmed === true || review.payment_date) {
+          return fail(409, 'situacao_invalida');
+        }
+        return await calculate(admin, employee, {
+          competence,
+          payment_date: body.payment_date,
+          tax_dependents: review.tax_dependents,
+          paid_days: review.paid_days,
+          unpaid_days: review.unpaid_days,
+          dsr_extra: review.dsr_extra,
+          dsr_discount: review.dsr_discount,
+          reviewed_inputs: true,
+        }, setStage, row);
       }
       if (row.earnings?.some((item) => item.description?.includes('estimativa'))) {
         return incomplete([

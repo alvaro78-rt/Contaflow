@@ -1,5 +1,5 @@
 // Versão funcional do endpoint de folha. Não representa a versão do site na Vercel.
-export const EXPECTED_PAYROLL_RELEASE = '2026-11-20-payroll-stage-diagnostics-v2';
+export const EXPECTED_PAYROLL_RELEASE = '2026-11-20-payroll-draft-review-v3';
 
 // Diferencia a função antiga de falhas de autenticação/rede sem fazer alterações.
 export function classifyPayrollRelease(response, error = null) {

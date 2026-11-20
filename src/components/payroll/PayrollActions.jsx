@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useSession } from '@/lib/SessionContext';
 import { base44 } from '@/api/base44Client';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { useToast } from '@/components/ui/use-toast';
 import { fmtDate } from '@/lib/format';
 import { STATUS_LABEL } from '@/components/payroll/PayrollSheet';
@@ -11,6 +12,8 @@ export default function PayrollActions({ payroll: p, onChange }) {
   const { toast } = useToast();
   const { session } = useSession();
   const [error, setError] = useState('');
+  const [paymentDate, setPaymentDate] = useState('');
+  const needsPaymentDate = p.input_review?.version === 2 && p.input_review?.payment_date_confirmed !== true;
   const inconsistent = Math.abs(p.net_salary - (p.total_earnings - p.total_deductions)) > 0.005;
 
   const run = async (action, msg) => {
@@ -22,6 +25,7 @@ export default function PayrollActions({ payroll: p, onChange }) {
         token: session?.token,
         payroll_id: p.id,
         expected_company_id: session.company_id,
+        ...(action === 'confirmPaymentDate' && { payment_date: paymentDate }),
       });
       if (!response.data?.ok || !response.data?.payroll) throw new Error('resposta_invalida');
       onChange(response.data.payroll);
@@ -40,10 +44,24 @@ export default function PayrollActions({ payroll: p, onChange }) {
       {session?.role !== 'gerente' && p.status === 'rascunho' && (
         <>
           <span>Conferente: {session?.name}</span>
-          <Button disabled={busy || inconsistent}
-            onClick={() => run('approve', 'Folha conferida e aprovada')}>
-            Aprovar folha
-          </Button>
+          {needsPaymentDate ? (
+            <>
+              <label className="text-sm">
+                Data de pagamento para calcular o IRRF
+                <Input type="date" value={paymentDate} disabled={busy}
+                  onChange={(event) => setPaymentDate(event.target.value)} />
+              </label>
+              <Button disabled={busy || !paymentDate}
+                onClick={() => run('confirmPaymentDate', 'Rascunho atualizado. Confira os valores antes de aprovar.')}>
+                Recalcular com a data de pagamento
+              </Button>
+            </>
+          ) : (
+            <Button disabled={busy || inconsistent}
+              onClick={() => run('approve', 'Folha conferida e aprovada')}>
+              Aprovar folha
+            </Button>
+          )}
         </>
       )}
       {session?.role !== 'gerente' && p.status === 'aprovada' && (
