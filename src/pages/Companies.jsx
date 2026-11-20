@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import Field from '@/components/Field';
 import { useSession } from '@/lib/SessionContext';
 import { formatCpf } from '@/lib/format';
+import { describeCompaniesError } from '@/lib/companiesError';
 
 const EXPIRED = ['sessao_invalida', 'sessao_expirada', 'conta_desligada'];
 
@@ -47,7 +48,7 @@ export default function Companies() {
         navigate('/login?expired=1', { replace: true });
         return;
       }
-      setError('Não foi possível carregar as empresas agora. Tente novamente.');
+      setError(describeCompaniesError(err));
     } finally {
       if (current === request.current) setLoading(false);
     }
@@ -160,7 +161,10 @@ export default function Companies() {
             {loading && companies === null && <p className="px-4 py-6 text-sm text-muted-foreground">Carregando…</p>}
             {error && (
               <div className="space-y-3 px-4 py-6">
-                <p className="border border-destructive bg-red-50 px-3 py-2 text-sm text-destructive">{error}</p>
+                <div role="alert" className="space-y-1 border border-destructive bg-red-50 px-3 py-2 text-sm text-destructive">
+                  <p>{error.message || error}</p>
+                  {error.details && <p className="font-mono text-xs">listCompanies · {error.details}</p>}
+                </div>
                 <Button size="sm" variant="outline" onClick={load} disabled={loading}>
                   <RefreshCw className="h-3.5 w-3.5" /> {loading ? 'Tentando…' : 'Tentar novamente'}
                 </Button>
