@@ -580,7 +580,42 @@ Deno.test('versao de payrollService exige autorizacao mas nao altera registros',
   const db = fixture();
   const res = await call(payroll, 'release');
   assert.equal(res.status, 200);
-  assert.match(res.release, /payroll-stage-diagnostics-v2/);
+  assert.match(res.release, /payroll-draft-review-v3/);
   assert.equal(db.Payroll.length, 0);
   assert.equal((await call(payroll, 'release', {}, 'worker')).status, 403);
+});
+
+Deno.test('RH confirma data do rascunho automático antes da aprovação, preservando a identidade da folha', async () => {
+  const db = fixture();
+  db.Employee[0].dependents = [];
+  attendance(db);
+  const draft = await call(payroll, 'calculate', { competence: '2026-01', employee_id: 'worker', automatic: true });
+  const fields = { payroll_id: draft.payroll.id, payment_date: '2026-02-05' };
+  const original = structuredClone(db.Payroll);
+  assert.equal((await call(payroll, 'confirmPaymentDate', fields, 'manager')).status, 403);
+  assert.equal((await call(payroll, 'confirmPaymentDate', { ...fields, expected_company_id: 'B' })).status, 409);
+  assert.equal((await call(payroll, 'confirmPaymentDate', { ...fields, payment_date: '2026-01-01' })).status, 422);
+  assert.deepEqual(db.Payroll, original);
+  const confirmed = await call(payroll, 'confirmPaymentDate', fields);
+  assert.equal(confirmed.status, 200);
+  assert.equal(confirmed.payroll.id, draft.payroll.id);
+  assert.equal(confirmed.payroll.status, 'rascunho');
+  assert.equal(confirmed.payroll.input_review.payment_date, fields.payment_date);
+  assert.equal(db.Payroll.length, 1);
+  assert.equal((await call(payroll, 'confirmPaymentDate', fields)).status, 409);
+  assert.equal((await call(payroll, 'approve', fields)).status, 200);
+  assert.equal((await call(payroll, 'finalize', fields)).status, 200);
+  assert.equal((await call(payroll, 'confirmPaymentDate', fields)).status, 409);
+  assert.equal((await call(portal, 'payslip', { competence: '2026-01' }, 'worker')).payroll.id, draft.payroll.id);
+});
+
+Deno.test('sonda GET informa apenas a versão e JSON inválido é rejeitado sem usar o SDK', async () => {
+  const response = await payroll(new Request('http://local.test/functions/payrollService'));
+  assert.equal(response.status, 405);
+  assert.match(response.headers.get('X-ContaFlow-Payroll-Release'), /payroll-draft-review-v3/);
+  assert.equal(response.headers.get('Cache-Control'), 'no-store');
+  assert.deepEqual(await response.json(), { error: 'metodo_invalido' });
+  const malformed = await payroll(new Request('http://local.test/functions/payrollService', { method: 'POST', body: '{' }));
+  assert.equal(malformed.status, 400);
+  assert.deepEqual(await malformed.json(), { error: 'requisicao_invalida' });
 });

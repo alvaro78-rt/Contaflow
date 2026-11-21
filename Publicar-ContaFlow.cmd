@@ -3,6 +3,10 @@ setlocal EnableExtensions DisableDelayedExpansion
 cd /d "%~dp0" || goto erro
 set "CONTAFLOW_APP=6ae7c2d5ff47db9e2bde7c3e"
 set "BASE44_APP_ID=%CONTAFLOW_APP%"
+set "VITE_BASE44_APP_ID=%CONTAFLOW_APP%"
+set "VITE_BASE44_APP_BASE_URL=https://contabilidade-1.base44.app"
+set "VITE_BASE44_FUNCTIONS_VERSION="
+set "BASE44_SITE_URL=https://contabilidade-1.base44.app"
 echo ================================================================
 echo   ContaFlow - publicacao seletiva e segura do Base44
 echo   Aplicativo de destino: %CONTAFLOW_APP%
@@ -10,7 +14,7 @@ echo ================================================================
 echo.
 echo Este processo NAO executa: base44 deploy, entities push,
 echo functions deploy --force, exclusao ou migracao de dados.
-echo Ele publica as funcoes existentes e o frontend deste checkout.
+echo Ele publica payrollService e o frontend deste checkout.
 echo.
 if not exist "package.json" (
   echo ERRO: extraia o ZIP COMPLETO e execute este arquivo na pasta raiz.
@@ -39,7 +43,7 @@ call npm.cmd ci
 if errorlevel 1 goto erro
 echo.
 echo [3/7] Executando os testes de interface e as verificacoes de qualidade...
-node --test tests\payroll-preflight.test.js tests\payroll-release.test.js
+node --test tests/*.test.js
 if errorlevel 1 goto erro
 call npm.cmd run lint
 if errorlevel 1 goto erro
@@ -66,7 +70,7 @@ if not exist "base44\.app.jsonc" (
 node -e "const fs=require('node:fs');const raw=fs.readFileSync('base44/.app.jsonc','utf8').replace(/^\s*\/\/.*$/gm,'').replace(/,\s*([}\]])/g,'$1');const cfg=JSON.parse(raw);const id=cfg.id||cfg.appId||cfg.app_id;if(id!==process.env.CONTAFLOW_APP){console.error('ERRO: projeto vinculado ao app '+String(id)+' (esperado '+process.env.CONTAFLOW_APP+').');process.exit(1)};console.log('Destino validado: '+id);"
 if errorlevel 1 goto erro
 echo.
-echo A proxima etapa publica funcoes e o site Base44 de producao.
+echo A proxima etapa publica payrollService e o site Base44 de producao.
 echo Revise se voce ja tem um backup recuperavel e se o editor
 echo Base44 nao possui outras alteracoes pendentes que precisem
 echo de verificacao antes da publicacao.
@@ -77,26 +81,36 @@ if /i not "%CONFIRMA%"=="PUBLICAR" (
   exit /b 0
 )
 echo.
-echo [6/7] Publicando apenas as 14 funcoes do ContaFlow...
-call npx.cmd --yes base44 functions deploy authCpf companyDashboard createCompany createEmployeeAccess employeeCatalog employeePortal enterCompany listCompanies listEmployees manageCompany payrollService provisionMaster recoverMaster rhService --app-id %CONTAFLOW_APP%
+echo [6/7] Publicando apenas payrollService...
+call npx.cmd --yes base44 functions deploy payrollService --app-id %CONTAFLOW_APP%
 if errorlevel 1 goto erro
 echo.
 echo [7/7] Publicando o frontend no mesmo app Base44...
-call npx.cmd --yes base44 site deploy --build --app-id %CONTAFLOW_APP%
+node scripts\verificar-publicacao.mjs backend
+if errorlevel 1 goto release_pendente
+call npx.cmd --yes base44 site deploy --app-id %CONTAFLOW_APP%
+if errorlevel 1 goto erro
+node scripts\verificar-publicacao.mjs frontend
 if errorlevel 1 goto erro
 echo.
 echo ================================================================
-echo   Publicacao via CLI concluida.
+echo   Versao publica da folha e interface ContaFlow verificadas.
 echo   Abra https://contabilidade-1.base44.app/login
 echo ================================================================
 echo IMPORTANTE: a publicacao via CLI nao prova que o scanner
 echo do editor usa o mesmo bundle. Confira Dashboard - Security,
-echo execute Run Security Scan e revise as 2 funcoes publicas.
+echo execute Run Security Scan e revise as funcoes sinalizadas.
 echo Login por CPF e provisionamento inicial podem precisar
 echo de acesso antes do login; NAO use Corrigir tudo sem revisar.
 echo.
 pause
 exit /b 0
+
+:release_pendente
+echo.
+echo A versao publica da folha ainda nao foi confirmada.
+echo O frontend nao foi publicado. Confira os logs e o runtime com o suporte Base44.
+goto erro
 
 :erro
 echo.

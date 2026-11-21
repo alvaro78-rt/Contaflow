@@ -45,9 +45,11 @@ base44 dev --remote
 
 ## Publish Your Changes
 
-Para publicar esta cópia no ContaFlow original pelo Windows, extraia o ZIP inteiro e execute `Publicar-ContaFlow.cmd`. O script usa a conta já conectada pelo comando `npx --yes base44 login`, instala as dependências, atualiza as funções do cadastro e publica o site compilado no app `contabilidade-1.base44.app`.
+O repositório GitHub contém a interface ContaFlow. A prévia de um editor Base44 sem sincronização pode conter uma revisão diferente. Antes de usar **Publish App** no editor, confira se a prévia usa a interface ContaFlow e se o editor recebeu os arquivos da revisão que você pretende publicar.
 
-Se você publica pelo editor Base44, confira antes se o código aberto nele corresponde ao commit desejado. O botão Publicar do editor usa a versão que estiver nele.
+No Windows, `Publicar-ContaFlow.cmd` prepara o build e publica somente `payrollService` no app ContaFlow. Uma leitura sem login confirma a versão ativa do endpoint antes de enviar o site compilado com `site deploy`. O script verifica a interface em `/login` após a publicação. `node scripts/verificar-publicacao.mjs` repete as duas leituras sem acessar dados da empresa. A verificação autenticada na tela de folha continua disponível para conferir o caminho usado pelo frontend.
+
+Se a publicação seletiva mostrar `unchanged` e a checagem pública falhar, preserve a produção enquanto compara os logs de `preview` e `prod`. Informe ao suporte Base44 o app, a função, as versões e os IDs das requisições públicas. A publicação do frontend na Vercel tem ciclo próprio e usa o backend no Base44.
 
 ## Docs & Support
 

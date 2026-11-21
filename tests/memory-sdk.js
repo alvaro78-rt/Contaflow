@@ -52,6 +52,18 @@ export function seed(rows) {
         items.push(row);
         return structuredClone(row);
       },
+      async upsert(records, { key }) {
+        let created = 0;
+        const saved = records.map((fields) => {
+          const existing = items.find((row) => key.every((field) => row[field] === fields[field]));
+          if (existing) return Object.assign(existing, fields);
+          const row = { ...fields, id: crypto.randomUUID() };
+          items.push(row);
+          created++;
+          return row;
+        });
+        return { created, records: structuredClone(saved) };
+      },
       async update(id, fields) {
         const row = items.find((r) => r.id === id);
         Object.assign(row, fields);
