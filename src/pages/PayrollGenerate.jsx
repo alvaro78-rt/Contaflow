@@ -10,7 +10,7 @@ import EmployeePicker from '@/components/EmployeePicker';
 import PayrollSheet from '@/components/payroll/PayrollSheet';
 import PayrollActions from '@/components/payroll/PayrollActions';
 import { lastClosedCompetence, suggestedCompetence, competenceAdmissionProblem } from '@/lib/payrollPreflight';
-import { classifyPayrollRelease } from '@/lib/payrollServiceVersion';
+import { classifyPayrollRelease, EXPECTED_PAYROLL_RELEASE } from '@/lib/payrollServiceVersion';
 import { describePayrollServerFailure } from '@/lib/payrollFailure';
 
 export default function PayrollGenerate() {
@@ -39,7 +39,7 @@ export default function PayrollGenerate() {
       const label = state === 'current'
         ? 'Servidor de folha atualizado e acessível. Verificação sem alteração de dados.'
         : state === 'outdated'
-          ? 'Versão antiga do backend detectada. Atualize a função payrollService no Base44 antes de processar.'
+          ? `Versão recebida de payrollService: ${response.data.release}. Versão exigida para processar a folha: ${EXPECTED_PAYROLL_RELEASE}.`
           : 'Não foi possível confirmar a versão do backend. Não processe a folha.';
       setServerStatus(label);
       return state === 'current';
