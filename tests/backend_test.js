@@ -6,6 +6,7 @@ import payroll from '../base44/functions/payrollService/entry.ts';
 import rh from '../base44/functions/rhService/entry.ts';
 import auth from '../base44/functions/authCpf/entry.ts';
 import listCompanies from '../base44/functions/listCompanies/entry.ts';
+import manageCompany from '../base44/functions/manageCompany/entry.ts';
 import { hashPassword } from '../base44/shared/authHelpers.ts';
 import { calcInss, calcIrrf } from '../base44/shared/payrollCalculation.js';
 import { newPasswordHash, verifyPassword } from '../base44/shared/passwords.ts';
@@ -618,4 +619,15 @@ Deno.test('sonda GET informa apenas a versão e JSON inválido é rejeitado sem 
   const malformed = await payroll(new Request('http://local.test/functions/payrollService', { method: 'POST', body: '{' }));
   assert.equal(malformed.status, 400);
   assert.deepEqual(await malformed.json(), { error: 'requisicao_invalida' });
+});
+
+Deno.test('gestao de empresas rejeita JSON invalido sem gravar registros', async () => {
+  const db = fixture();
+  const initial = structuredClone(db);
+  for (const body of ['{', 'null', '[]', '"texto"']) {
+    const res = await manageCompany(new Request('http://local.test/', { method: 'POST', body }));
+    assert.equal(res.status, 400);
+    assert.deepEqual(await res.json(), { error: 'requisicao_invalida' });
+  }
+  assert.deepEqual(db, initial);
 });
