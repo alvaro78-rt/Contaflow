@@ -150,11 +150,11 @@ export default function PayrollGenerate() {
         <Button size="sm" variant="outline" type="button" disabled={loading || checkingServer} onClick={checkBackend}>
           {checkingServer ? 'Verificando servidor…' : 'Verificar backend (sem gravar)'}
         </Button>
-        <p role="status" className="text-xs text-muted-foreground">{serverStatus || 'Confirme a versão ativa do processamento antes de gerar a folha.'}</p>
+        <p role="status" className="min-w-0 break-words text-xs text-muted-foreground">{serverStatus || 'Confirme a versão ativa do processamento antes de gerar a folha.'}</p>
       </div>
-      <div className="grid gap-4 md:grid-cols-[1fr_200px_auto] md:items-end">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-[minmax(0,1fr)_200px_auto] md:items-end">
         <Field label="Funcionário"><EmployeePicker value={emp} onChange={(e) => { setEmp(e); if (e) setComp((old) => suggestedCompetence(old, e.admission_date)); setPayroll(null); setProblems([]); }} /></Field>
-        <Field label="Competência"><Input type="month" value={comp} onChange={(e) => { setComp(e.target.value); setPayroll(null); setProblems([]); }} /></Field>
+        <Field label="Competência" className="min-w-0"><Input className="min-w-0 max-w-full" type="month" value={comp} onChange={(e) => { setComp(e.target.value); setPayroll(null); setProblems([]); }} /></Field>
         <Button disabled={!emp || !comp || loading || checkingServer || Boolean(admissionProblem)} onClick={process}>{loading ? 'Processando…' : 'Processar folha'}</Button>
       </div>
       {admissionProblem && <p role="alert" className="text-sm text-destructive">{admissionProblem}</p>}
