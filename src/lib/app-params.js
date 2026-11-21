@@ -1,4 +1,5 @@
 import { getAccessToken } from '@base44/sdk';
+import { resolveBase44AppId, resolveBase44FunctionsVersion } from './base44BackendUrl';
 
 const isNode = typeof window === 'undefined';
 
@@ -14,10 +15,15 @@ const getAppParams = () => {
 	if (isClearAccessTokenRequested()) {
 		clearStoredAccessToken();
 	}
+	const pageOrigin = isNode ? '' : window.location.origin;
 	return {
-		appId: import.meta.env.VITE_BASE44_APP_ID,
+		appId: resolveBase44AppId({ pageOrigin, configuredAppId: import.meta.env.VITE_BASE44_APP_ID }),
 		token: getAccessToken(),
-		functionsVersion: (!isNode && new URLSearchParams(window.location.search).get("functions_version")?.trim()) || import.meta.env.VITE_BASE44_FUNCTIONS_VERSION,
+		functionsVersion: resolveBase44FunctionsVersion({
+			pageOrigin,
+			search: isNode ? '' : window.location.search,
+			configuredVersion: import.meta.env.VITE_BASE44_FUNCTIONS_VERSION,
+		}),
 		appBaseUrl: import.meta.env.VITE_BASE44_APP_BASE_URL,
 	}
 }

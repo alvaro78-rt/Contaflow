@@ -10,7 +10,7 @@ import EmployeePicker from '@/components/EmployeePicker';
 import PayrollSheet from '@/components/payroll/PayrollSheet';
 import PayrollActions from '@/components/payroll/PayrollActions';
 import { lastClosedCompetence, suggestedCompetence, competenceAdmissionProblem } from '@/lib/payrollPreflight';
-import { classifyPayrollRelease } from '@/lib/payrollServiceVersion';
+import { classifyPayrollRelease, EXPECTED_PAYROLL_RELEASE } from '@/lib/payrollServiceVersion';
 import { describePayrollServerFailure } from '@/lib/payrollFailure';
 
 export default function PayrollGenerate() {
@@ -39,7 +39,7 @@ export default function PayrollGenerate() {
       const label = state === 'current'
         ? 'Servidor de folha atualizado e acessível. Verificação sem alteração de dados.'
         : state === 'outdated'
-          ? 'Versão antiga do backend detectada. Publique payrollService v2 no Base44 antes de processar.'
+          ? `Versão recebida de payrollService: ${response.data.release}. Versão exigida para processar a folha: ${EXPECTED_PAYROLL_RELEASE}.`
           : 'Não foi possível confirmar a versão do backend. Não processe a folha.';
       setServerStatus(label);
       return state === 'current';
@@ -47,7 +47,7 @@ export default function PayrollGenerate() {
       const state = classifyPayrollRelease(null, error);
       const status = error?.response?.status ?? error?.status;
       setServerStatus(state === 'outdated'
-        ? 'Backend antigo: a verificação de versão não está disponível. Publique payrollService v2.'
+        ? 'Backend antigo: a verificação de versão não está disponível. Atualize a função payrollService no Base44.'
         : 'Backend não confirmado (HTTP ' + (Number.isInteger(status) ? status : 'indisponível') + '). Não processe a folha.');
       return false;
     } finally {
@@ -150,11 +150,11 @@ export default function PayrollGenerate() {
         <Button size="sm" variant="outline" type="button" disabled={loading || checkingServer} onClick={checkBackend}>
           {checkingServer ? 'Verificando servidor…' : 'Verificar backend (sem gravar)'}
         </Button>
-        <p role="status" className="text-xs text-muted-foreground">{serverStatus || 'Confirme a versão ativa do processamento antes de gerar a folha.'}</p>
+        <p role="status" className="min-w-0 break-words text-xs text-muted-foreground">{serverStatus || 'Confirme a versão ativa do processamento antes de gerar a folha.'}</p>
       </div>
-      <div className="grid gap-4 md:grid-cols-[1fr_200px_auto] md:items-end">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-[minmax(0,1fr)_200px_auto] md:items-end">
         <Field label="Funcionário"><EmployeePicker value={emp} onChange={(e) => { setEmp(e); if (e) setComp((old) => suggestedCompetence(old, e.admission_date)); setPayroll(null); setProblems([]); }} /></Field>
-        <Field label="Competência"><Input type="month" value={comp} onChange={(e) => { setComp(e.target.value); setPayroll(null); setProblems([]); }} /></Field>
+        <Field label="Competência" className="min-w-0"><Input className="block w-full min-w-0 max-w-full appearance-none box-border [&::-webkit-date-and-time-value]:min-w-0" type="month" value={comp} onChange={(e) => { setComp(e.target.value); setPayroll(null); setProblems([]); }} /></Field>
         <Button disabled={!emp || !comp || loading || checkingServer || Boolean(admissionProblem)} onClick={process}>{loading ? 'Processando…' : 'Processar folha'}</Button>
       </div>
       {admissionProblem && <p role="alert" className="text-sm text-destructive">{admissionProblem}</p>}
