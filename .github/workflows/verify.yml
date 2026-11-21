@@ -2,7 +2,7 @@ name: Verificar ContaFlow
 
 on:
   push:
-    branches: [main]
+    branches: [main, fix/gestao-empresas-validacao-20261121]
   pull_request:
     branches: [main]
   workflow_dispatch:
