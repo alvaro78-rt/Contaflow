@@ -8,6 +8,7 @@ export default async function (req) {
   if (req.method !== 'POST') return fail(405, 'metodo_invalido');
   try {
     const body = await req.json().catch(() => null);
+    if (!body || typeof body !== 'object' || Array.isArray(body)) return fail(400, 'requisicao_invalida');
     const client = createClientFromRequest(req);
     const loaded = await loadSession(client, body?.token);
     if (loaded.error) return fail(loaded.status, loaded.error);
