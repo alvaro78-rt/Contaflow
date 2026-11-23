@@ -20,7 +20,7 @@ export default async function (req) {
 
   if (!fullName || fullName.length < 3) return Response.json({ error: 'nome_invalido' }, { status: 400 });
   if (cpf.length !== 11 || !isValidCpf(cpf)) return Response.json({ error: 'cpf_invalido' }, { status: 400 });
-  if (password.length < 6) return Response.json({ error: 'senha_curta' }, { status: 400 });
+  if (password.length < 6 || password.length > 128) return Response.json({ error: 'senha_curta' }, { status: 400 });
 
   try {
     let expected = '';
@@ -48,6 +48,7 @@ export default async function (req) {
     const created = await base44.asServiceRole.entities.Employee.create({
       full_name: fullName,
       cpf,
+      username: cpf,
       access_role: 'master',
       status: 'ativo',
       password_hash: await newPasswordHash(password),
