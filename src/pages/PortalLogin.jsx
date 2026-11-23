@@ -7,6 +7,7 @@ import Field from '@/components/Field';
 import { useSession } from '@/lib/SessionContext';
 import { useServices } from '@/lib/ServicesContext';
 import { formatCpf, onlyDigits } from '@/lib/format';
+import { isValidCpf } from '@/lib/cpf';
 import { describeLoginFailure } from '@/lib/loginDiagnostics';
 
 const LOGIN_ERRORS = {
@@ -35,7 +36,7 @@ export default function PortalLogin({ afterLogin }) {
 
   useEffect(() => {
     services.invoke('authCpf', { action: 'masterExists' })
-      .then((r) => setNoMaster(!r.data?.exists))
+      .then((r) => setNoMaster(r.data?.exists === false))
       .catch(() => setNoMaster(false));
     const params = new URLSearchParams(window.location.search);
     if (params.get('expired') === '1') setSessaoExpirada(true);
@@ -47,7 +48,8 @@ export default function PortalLogin({ afterLogin }) {
     setError('');
     setDiagnostic('');
     const cpf = onlyDigits(form.cpf);
-    if (cpf.length !== 11) return setError('Informe os 11 dígitos do CPF.');
+    if (!isValidCpf(cpf)) return setError('CPF inválido. Confira os dígitos verificadores.');
+    if (!form.password) return setError('Informe sua senha.');
     setBusy(true);
     try {
       const res = await services.invoke('authCpf', { action: 'login', cpf, password: form.password });
@@ -93,9 +95,6 @@ export default function PortalLogin({ afterLogin }) {
 
   return (
     <AuthShell title="Entrar" subtitle="Use o CPF e a senha do seu cadastro.">
-      {new URLSearchParams(window.location.search).get('activated') === '1' && (
-        <p className="mb-4 text-sm text-emerald-700">Acesso criado. Entre com seu CPF e a senha que você definiu.</p>
-      )}
       <form onSubmit={submit} className="space-y-4">
         <Field label="CPF">
           <Input className="font-mono" inputMode="numeric" value={formatCpf(form.cpf)} onChange={(e) => setForm({ ...form, cpf: e.target.value })} placeholder="000.000.000-00" autoComplete="username" />
@@ -120,13 +119,12 @@ export default function PortalLogin({ afterLogin }) {
           </div>
         )}
         <Button type="submit" className="w-full" disabled={busy}>{busy ? 'Verificando…' : 'Entrar'}</Button>
-        <Button asChild variant="outline" className="w-full"><Link to="/cadastro">Cadastrar-se</Link></Button>
         {noMaster && (
           <div className="space-y-2 border-emerald-600 bg-accent text-accent-foreground border px-3 py-2 text-xs">
             <p className="font-semibold">Primeiro acesso da instalação</p>
             <p>Nenhuma conta existe ainda. O gerente se cadastra com a chave de criação.</p>
             <Button asChild variant="outline" size="sm" className="w-full">
-              <Link to="/mestre">Criar conta mestre</Link>
+              <Link to="/cadastro">Cadastrar-se</Link>
             </Button>
           </div>
         )}
