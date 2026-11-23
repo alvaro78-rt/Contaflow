@@ -61,10 +61,11 @@ export default async function (req) {
     const password = typeof body.password === 'string' ? body.password : '';
     if (data.full_name?.length < 3 || !data.full_name || data.full_name.length > 200) return fail(400, 'nome_invalido');
     if (!isValidCpf(cpf)) return fail(400, 'cpf_invalido');
-    if ((action === 'quick' || password) && (password.length < 6 || password.length > 128)) {
+    if ((action === 'quick' || !existing || password) && (password.length < 6 || password.length > 128)) {
       return fail(400, 'senha_invalida');
     }
 
+    data.username = cpf;
     const matches = await Employee.filter({ cpf }, 'created_date', 100);
     const accounts = matches.filter((e) => e.id !== existing?.id && e.password_hash);
     if (action === 'quick') {
@@ -87,7 +88,7 @@ export default async function (req) {
           $and:[
             {$or:[{access_role:'funcionario'},{access_role:null},{access_role:{$exists:false}}]},
             {$or:[{password_hash:''},{password_hash:null},{password_hash:{$exists:false}}]},
-          ]},{$set:{password_hash}});
+          ]},{$set:{password_hash, username:cpf, credential_version:crypto.randomUUID()}});
         if (changed.updated !== 1) return fail(409,'cpf_ja_tem_acesso');
         return ok({employee:employeeRow({...target,password_hash})});
       }
