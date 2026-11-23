@@ -37,34 +37,8 @@ export default async function (req) {
     }
 
     if (action === 'activate') {
-      const cpf = onlyDigits(body.cpf);
-      const birth = String(body.birth_date || '');
-      const password = body.password;
-      if (!isValidCpf(cpf) || !/^\d{4}-\d{2}-\d{2}$/.test(birth) || body.accepted !== true ||
-          typeof password !== 'string' || password.length < 6 || password.length > 128) {
-        return Response.json({ error: 'dados_invalidos' }, { status: 400 });
-      }
-      const attempt = consumeAuthAttempt('activate', cpf);
-      if (!attempt.allowed) return slowDown(attempt.retryAfterSeconds);
-      const { Employee } = base44.asServiceRole.entities;
-      const candidates = await Employee.filter({ cpf }, 'created_date', 2);
-      const employee = candidates[0];
-      const deny = () => Response.json({ error: 'ativacao_indisponivel' }, { status: 409 });
-      if (candidates.length !== 1 || !employee.company_id || employee.birth_date !== birth ||
-          (employee.access_role || 'funcionario') !== 'funcionario' || employee.status === 'desligado' || employee.password_hash) return deny();
-
-      const company = await base44.asServiceRole.entities.Company.get(employee.company_id).catch(e => e.status === 404 ? null : Promise.reject(e));
-      if (!company || company.status === 'inativa') return deny();
-      const result = await Employee.updateMany({
-        id: employee.id, cpf, birth_date: birth, company_id: employee.company_id, status: { $ne: 'desligado' },
-        $and: [
-          { $or: [{ access_role: 'funcionario' }, { access_role: { $exists: false } }, { access_role: null }] },
-          { $or: [{ password_hash: { $exists: false } }, { password_hash: null }, { password_hash: '' }] },
-        ],
-      }, { $set: { password_hash: await newPasswordHash(password), terms_accepted: true, terms_accepted_at: new Date().toISOString() } });
-      if (result.updated !== 1) return deny();
-      clearAuthAttempts('activate', cpf);
-      return Response.json({ ok: true });
+      // Cadastro próprio bloqueado no servidor; funcionário recebe acesso do gerente.
+      return Response.json({ error: 'cadastro_exclusivo_gerente' }, { status: 403 });
     }
 
     if (action === 'changePassword' || action === 'logout') {
@@ -155,6 +129,7 @@ export default async function (req) {
           id: emp.id,
           full_name: emp.full_name,
           access_role: emp.access_role || 'funcionario',
+          username: onlyDigits(emp.cpf),
           company_id: emp.company_id || '',
           company_name: companyName,
         },
