@@ -6,8 +6,11 @@ import payroll from '../base44/functions/payrollService/entry.ts';
 import rh from '../base44/functions/rhService/entry.ts';
 import auth from '../base44/functions/authCpf/entry.ts';
 import listCompanies from '../base44/functions/listCompanies/entry.ts';
+import conference from '../base44/functions/attendanceConference/entry.ts';
+import manageCompany from '../base44/functions/manageCompany/entry.ts';
 import { hashPassword } from '../base44/shared/authHelpers.ts';
 import { calcInss, calcIrrf } from '../base44/shared/payrollCalculation.js';
+import { EXPECTED_PAYROLL_RELEASE } from '../src/lib/payrollServiceVersion.js';
 import { newPasswordHash, verifyPassword } from '../base44/shared/passwords.ts';
 import { authorizeOwner, checkRecoveryKey, attemptRecovery } from '../base44/shared/masterSwap.ts';
 import { consumeAuthAttempt, clearAuthAttempts } from '../base44/shared/loginThrottle.js';
@@ -255,7 +258,10 @@ Deno.test('folha legada e totais divergentes conservam status e valores', async 
 });
 Deno.test('regras globais exigem mestre e dados de outra empresa ficam fora da consulta de ponto', async () => {
   const db = fixture();
+  const tabelas = structuredClone(db.LegalTable);
+  // Não-mestre com empresa válida na sessão: 403 e nenhuma tabela alterada.
   assert.equal((await call(rh, 'saveLegalTable', { record: table })).status, 403);
+  assert.deepEqual(db.LegalTable, tabelas);
   assert.equal((await call(rh, 'time', { employee_id: 'other', competence: '2026-01' })).status, 404);
   db.AuthSession.push({
     id: 'masterSession',
@@ -264,9 +270,15 @@ Deno.test('regras globais exigem mestre e dados de outra empresa ficam fora da c
     company_id: 'A',
     expires_at: '2099-01-01',
   });
-  db.Employee.push({ id: 'master', access_role: 'master' });
+  // A conta mestre só alcança empresa com vínculo: aqui, como titular de A.
+  db.Employee.push({ id: 'master', access_role: 'master', cpf: '52998224725' });
   assert.equal((await call(rh, 'history', { expected_company_id: 'B' }, 'master')).status, 409);
   assert.equal((await call(rh, 'history', {}, 'master')).status, 200);
+  // Mestre sem vínculo com a empresa da sessão continua bloqueado.
+  db.Employee.find((e) => e.id === 'master').cpf = '11122233396';
+  const denied = await call(rh, 'history', {}, 'master');
+  assert.equal(denied.status, 403);
+  assert.equal(denied.error, 'empresa_nao_autorizada');
 });
 Deno.test('modo automático usa dados salvos e gera somente rascunho com referência provisória', async () => {
   const db = fixture();
@@ -390,18 +402,16 @@ Deno.test('marcações anteriores à admissão bloqueiam rascunho e não são de
   assert.equal(db.Payroll.length, 0);
 });
 
-Deno.test('sem qualquer ponto, mostra apenas prévia não salva e nunca permite aprovação', async () => {
+Deno.test('sem qualquer ponto, recusa gerar folha com ponto_sem_registros e nada é gravado', async () => {
   const db = fixture();
   db.Employee[0].dependents = [];
   const result = await call(payroll, 'calculate', {
     employee_id: 'worker', competence: '2026-10', automatic: true,
   });
-  assert.equal(result.status, 200);
-  assert.equal(result.preview_only, true);
-  assert.equal(result.payroll.preview_only, true);
-  assert.equal(result.payroll.attendance_pending, true);
-  assert.equal(result.payroll.id, null);
-  assert.equal(result.payroll.time_summary.absences, 0); // não apurado, NÃO significa ausência zero
+  assert.equal(result.status, 422);
+  assert.equal(result.error, 'ponto_sem_registros');
+  assert.equal(result.preview_only, undefined); // nenhuma estimativa é exibida como folha
+  assert.equal(result.payroll, undefined);
   assert.equal(db.Payroll.length, 0); // nenhuma folha financeira criada
   assert.equal((await call(payroll, 'approve', { payroll_id: 'inexistente' })).status, 404);
 });
@@ -510,12 +520,18 @@ Deno.test('lista de empresas preserva autorizacao mestre e nao grava nem remove 
   db.Company[0].name = 'Empresa A';
   db.Company[1].name = 'Empresa B';
   db.Company[1].status = 'inativa';
+  // A conta mestre é gestora autorizada das duas (vínculo explícito em managed_by_cpf).
+  db.Company[0].managed_by_cpf = ['12345678909'];
+  db.Company[1].managed_by_cpf = ['12345678909'];
+  // Empresa de terceiro, sem vínculo algum com a conta mestre: deve ficar fora.
+  db.Company.push({ id: 'C', name: 'Empresa C', status: 'ativa', owner_cpf: '39053344705' });
   const original = structuredClone(db.Company);
 
   const all = await call(listCompanies, '', { include_inactive: true }, 'master');
   assert.equal(all.status, 200);
   assert.deepEqual(all.companies.map(c => c.name), ['Empresa A', 'Empresa B']);
   assert.equal(all.companies.find(c => c.name === 'Empresa B').status, 'inativa');
+  assert.equal(all.companies.some(c => c.name === 'Empresa C'), false);
 
   const active = await call(listCompanies, '', { include_inactive: false }, 'master');
   assert.equal(active.status, 200);
@@ -580,7 +596,7 @@ Deno.test('versao de payrollService exige autorizacao mas nao altera registros',
   const db = fixture();
   const res = await call(payroll, 'release');
   assert.equal(res.status, 200);
-  assert.match(res.release, /payroll-draft-review-v3/);
+  assert.match(res.release, new RegExp(EXPECTED_PAYROLL_RELEASE));
   assert.equal(db.Payroll.length, 0);
   assert.equal((await call(payroll, 'release', {}, 'worker')).status, 403);
 });
@@ -612,10 +628,139 @@ Deno.test('RH confirma data do rascunho automático antes da aprovação, preser
 Deno.test('sonda GET informa apenas a versão e JSON inválido é rejeitado sem usar o SDK', async () => {
   const response = await payroll(new Request('http://local.test/functions/payrollService'));
   assert.equal(response.status, 405);
-  assert.match(response.headers.get('X-ContaFlow-Payroll-Release'), /payroll-draft-review-v3/);
+  assert.match(response.headers.get('X-ContaFlow-Payroll-Release'), new RegExp(EXPECTED_PAYROLL_RELEASE));
   assert.equal(response.headers.get('Cache-Control'), 'no-store');
   assert.deepEqual(await response.json(), { error: 'metodo_invalido' });
   const malformed = await payroll(new Request('http://local.test/functions/payrollService', { method: 'POST', body: '{' }));
   assert.equal(malformed.status, 400);
   assert.deepEqual(await malformed.json(), { error: 'requisicao_invalida' });
+});
+
+Deno.test('gestao de empresas rejeita JSON invalido sem gravar registros', async () => {
+  const db = fixture();
+  const initial = structuredClone(db);
+  for (const body of ['{', 'null', '[]', '"texto"']) {
+    const res = await manageCompany(new Request('http://local.test/', { method: 'POST', body }));
+    assert.equal(res.status, 400);
+    assert.deepEqual(await res.json(), { error: 'requisicao_invalida' });
+  }
+  assert.deepEqual(db, initial);
+});
+
+const conferenceBasis = 'Frequência apurada pelas marcações do ponto e conferida pelo RH.';
+
+function removeDay(db, date) {
+  const start = db.TimeRecord.findIndex((row) => row.date === date);
+  db.TimeRecord.splice(start, 4);
+}
+
+Deno.test('apuracao automatica presume falta e exige conferencia antes do desconto', async () => {
+  const db = fixture();
+  db.Employee[0].dependents = [];
+  attendance(db);
+  removeDay(db, '2026-01-05');
+  const seen = await call(conference, 'view', { employee_id: 'worker', competence: '2026-01' });
+  assert.equal(seen.status, 200);
+  assert.equal(seen.counts.falta_presumida, 1);
+  assert.equal(seen.counts.pendencia, 0);
+  assert.equal(seen.days.find((day) => day.date === '2026-01-05').kind, 'falta_presumida');
+  assert.equal(seen.days.find((day) => day.date === '2026-01-01').kind, 'feriado');
+  assert.equal(seen.can_authorize, true);
+  // Sem conferência autorizada a folha não aplica desconto.
+  const blocked = await call(payroll, 'calculate', {
+    competence: '2026-01', employee_id: 'worker', automatic: true,
+  });
+  assert.equal(blocked.status, 422);
+  assert.equal(blocked.error, 'conferencia_necessaria');
+  assert.deepEqual(blocked.presumed_dates, ['2026-01-05']);
+  assert.equal(db.Payroll.length, 0);
+  const authorized = await call(conference, 'authorize', {
+    employee_id: 'worker', competence: '2026-01', days: [], basis: conferenceBasis,
+  });
+  assert.equal(authorized.status, 200);
+  assert.equal(authorized.conference.status, 'autorizada');
+  assert.equal(authorized.conference.authorized_by_name, 'Teste rh');
+  const result = await call(payroll, 'calculate', {
+    competence: '2026-01', employee_id: 'worker', automatic: true,
+  });
+  assert.equal(result.status, 200);
+  assert.equal(result.payroll.input_review.attendance_source, 'conferencia');
+  assert.equal(result.payroll.input_review.conference_authorized_by, 'Teste rh');
+  assert.equal(result.payroll.time_summary.absences, 1);
+  assert.deepEqual(result.payroll.input_review.unpaid_days, ['2026-01-05']);
+  assert.equal(result.payroll.input_review.dsr_lost_days, 1);
+  assert.equal(result.payroll.input_review.dsr_discount, 166.67);
+  assert.ok(result.payroll.deductions.some((row) => row.description.includes('Faltas')));
+  assert.ok(result.payroll.deductions.some((row) => row.description === 'Perda de DSR conferida'));
+  assert.ok(result.payroll.deductions.some((row) => row.description === 'INSS' && row.value > 0));
+  // A confirmação da data de pagamento continua obrigatória antes da aprovação.
+  assert.equal((await call(payroll, 'approve', { payroll_id: result.payroll.id })).status, 422);
+  assert.equal(db.Payroll.length, 1);
+});
+
+Deno.test('justificativa com evidencia abona a falta presumida na folha', async () => {
+  const db = fixture();
+  db.Employee[0].dependents = [];
+  attendance(db);
+  removeDay(db, '2026-01-05');
+  const refused = await call(conference, 'authorize', {
+    employee_id: 'worker', competence: '2026-01', basis: conferenceBasis,
+    days: [{
+      date: '2026-01-05',
+      situation: 'falta_justificada',
+      justification: 'Atestado médico apresentado ao RH',
+      evidence_uri: '',
+    }],
+  });
+  assert.equal(refused.status, 422);
+  assert.equal(refused.error, 'conferencia_incompleta');
+  assert.ok(refused.problems.some((problem) => problem.includes('evidência')));
+  assert.equal(db.AttendanceConference.length, 0);
+  const authorized = await call(conference, 'authorize', {
+    employee_id: 'worker', competence: '2026-01', basis: conferenceBasis,
+    days: [{
+      date: '2026-01-05',
+      situation: 'falta_justificada',
+      justification: 'Atestado médico apresentado ao RH',
+      evidence_uri: 'private://atestado',
+    }],
+  });
+  assert.equal(authorized.status, 200);
+  const result = await call(payroll, 'calculate', {
+    competence: '2026-01', employee_id: 'worker', automatic: true,
+  });
+  assert.equal(result.status, 200);
+  assert.equal(result.payroll.time_summary.absences, 0);
+  assert.equal(result.payroll.input_review.dsr_lost_days, 0);
+  assert.ok(!result.payroll.deductions.some((row) => row.description.includes('Faltas')));
+  assert.ok(result.payroll.input_review.paid_days.includes('2026-01-05'));
+});
+
+Deno.test('marcacao incompleta vira pendencia de ponto e bloqueia a folha', async () => {
+  const db = fixture();
+  db.Employee[0].dependents = [];
+  attendance(db);
+  const exit = db.TimeRecord.findIndex((row) => row.date === '2026-01-06' && row.kind === 'exit');
+  db.TimeRecord.splice(exit, 1);
+  const blocked = await call(payroll, 'calculate', {
+    competence: '2026-01', employee_id: 'worker', automatic: true,
+  });
+  assert.equal(blocked.status, 422);
+  assert.equal(blocked.error, 'ponto_pendente');
+  assert.deepEqual(blocked.pending_dates, ['2026-01-06']);
+  assert.equal(db.Payroll.length, 0);
+  const refused = await call(conference, 'authorize', {
+    employee_id: 'worker', competence: '2026-01', days: [], basis: conferenceBasis,
+  });
+  assert.equal(refused.status, 422);
+  assert.ok(refused.problems.some((problem) => problem.includes('Pendência de ponto')));
+  assert.equal(db.AttendanceConference.length, 0);
+});
+
+Deno.test('conferencia nao alcanca funcionario de outra empresa', async () => {
+  const db = fixture();
+  const result = await call(conference, 'view', { employee_id: 'other', competence: '2026-01' });
+  assert.equal(result.status, 404);
+  assert.equal(result.error, 'funcionario_inexistente');
+  assert.equal(db.AttendanceConference.length, 0);
 });

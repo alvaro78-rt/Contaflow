@@ -27,15 +27,16 @@ function Block({ title, items = [], total = undefined, totalLabel = undefined })
 export default function PayrollSheet({ payroll: p }) {
   const inconsistent = Math.abs(p.net_salary - (p.total_earnings - p.total_deductions)) > 0.005;
   const t = p.time_summary || {};
+  // Bloqueia a exibição de valores de prévias antigas, que nunca foram folhas gravadas.
+  if (p.preview_only) {
+    return (
+      <p role="alert" className="border border-amber-600 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+        O período ainda não foi apurado. Confira os registros de ponto para gerar uma folha real.
+      </p>
+    );
+  }
   return (
     <div className="space-y-4">
-      {p.preview_only && (
-        <div role="alert" className="border border-amber-600 bg-amber-50 px-4 py-3 text-sm text-amber-950">
-          <strong>SIMULAÇÃO — NÃO É FOLHA DE PAGAMENTO.</strong>
-          {' '}Não há ponto registrado para esta competência. Faltas, atrasos, extras e reflexos não foram apurados;
-          os valores abaixo são uma estimativa que não foi salva e não pode ser aprovada ou paga.
-        </div>
-      )}
       <div className="grid gap-px border border-border bg-border sm:grid-cols-4">
         {[['Funcionário', p.employee_name], ['CPF', formatCpf(p.employee_cpf)], ['Cargo', p.position_name || '—'], ['Competência', competenceLabel(p.competence)]].map(([k, v]) => (
           <div key={k} className="bg-card px-4 py-3">
@@ -49,6 +50,15 @@ export default function PayrollSheet({ payroll: p }) {
       ) : (
         <p className="text-xs text-muted-foreground">
           Ponto do período: {fmtMin(t.worked || 0)}h trabalhadas · {t.absences || 0} falta(s) · {fmtMin(t.late || 0)}h de atraso · {fmtMin(t.overtime || 0)}h extras
+        </p>
+      )}
+      {p.input_review?.attendance_source === 'conferencia' && (
+        <p className="text-xs font-medium text-emerald-800">
+          Frequência comprovada por conferência mensal autorizada
+          {p.input_review.conference_authorized_by ? ` por ${p.input_review.conference_authorized_by}` : ''}
+          {p.input_review.conference_authorized_at
+            ? ` em ${new Date(p.input_review.conference_authorized_at).toLocaleDateString('pt-BR')}`
+            : ''}.
         </p>
       )}
       {p.calc_memory && (
@@ -68,7 +78,7 @@ export default function PayrollSheet({ payroll: p }) {
       )}
       <div className="flex items-end justify-between border border-emerald-600 bg-accent px-5 py-4">
         <div>
-          <p className="text-xs uppercase tracking-wide text-emerald-800">{p.preview_only ? 'Valor líquido estimado — não pagar' : 'Salário líquido'}</p>
+          <p className="text-xs uppercase tracking-wide text-emerald-800">Salário líquido</p>
           <p className="text-xs text-emerald-800/70">Proventos − Descontos · Salário-base {money(p.base_salary)}</p>
         </div>
         <p className="font-mono text-3xl font-semibold text-emerald-700">{money(p.net_salary)}</p>

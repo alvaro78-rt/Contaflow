@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { useToast } from '@/components/ui/use-toast';
 import { fmtDate } from '@/lib/format';
 import { STATUS_LABEL } from '@/components/payroll/PayrollSheet';
+import { EXPECTED_PAYROLL_RELEASE, classifyPayrollRelease } from '@/lib/payrollServiceVersion';
 
 export default function PayrollActions({ payroll: p, onChange }) {
   const [busy, setBusy] = useState(false);
@@ -20,8 +21,18 @@ export default function PayrollActions({ payroll: p, onChange }) {
     setBusy(true);
     setError('');
     try {
+      // Approval, payment-date confirmation and finalization are also financial
+      // mutations: never send them to an unverified/older payroll function.
+      const release = await base44.functions.invoke('payrollService', {
+        action: 'release', token: session?.token,
+      });
+      if (classifyPayrollRelease(release) !== 'current') {
+        setError('A versão do serviço de folha não pôde ser confirmada. Nenhuma alteração foi realizada.');
+        return;
+      }
       const response = await base44.functions.invoke('payrollService', {
         action,
+        expected_release: EXPECTED_PAYROLL_RELEASE,
         token: session?.token,
         payroll_id: p.id,
         expected_company_id: session.company_id,

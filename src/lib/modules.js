@@ -1,4 +1,4 @@
-import { UserPlus, Search, Briefcase, CalendarClock, Fingerprint, FilePenLine, Tags, Calculator, History, Receipt, BarChart3, Settings2, TreePalm, Gift, FileX } from 'lucide-react';
+import { UserPlus, Search, Briefcase, CalendarClock, Fingerprint, FilePenLine, Tags, Calculator, History, Receipt, BarChart3, Settings2, TreePalm, Gift, FileX, ShieldCheck } from 'lucide-react';
 
 export const MODULES = [
   { path: '/funcionarios/novo', code: 'RF03', title: 'Cadastro de Funcionários', desc: 'Dados pessoais, dependentes, contrato e banco.', icon: UserPlus },
@@ -16,4 +16,5 @@ export const MODULES = [
   { path: '/contracheques', code: 'RF14', title: 'Contracheques', desc: 'Contracheque fiel à folha registrada.', icon: Receipt },
   { path: '/relatorios', code: 'RF15', title: 'Relatórios', desc: 'Pagamento, ponto, recibo, resumo e FGTS.', icon: BarChart3 },
   { path: '/parametros', code: 'RF11', title: 'Parâmetros Legais', desc: 'Tabelas de INSS, IRRF, FGTS e regras com vigência.', icon: Settings2 },
+  { path: '/diagnostico', code: 'RF21', title: 'Diagnóstico do Sistema', desc: 'Versão publicada do backend e reconciliação de registros órfãos.', icon: ShieldCheck },
 ];

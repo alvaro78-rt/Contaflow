@@ -1,5 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.54';
 import { loadSession } from '../../shared/sessionGuard.ts';
+import { canReadCompany } from '../../shared/companyAccess.ts';
 
 // Abre a empresa escolhida pela conta mestre. A empresa em uso fica na sessão do servidor,
 // nunca em um identificador enviado como autorização nas outras chamadas.
@@ -32,6 +33,12 @@ export default async function (req) {
       .get(companyId)
       .catch((e) => (e.status === 404 ? null : Promise.reject(e)));
     if (!company) return Response.json({ error: 'empresa_inexistente' }, { status: 404 });
+
+    // Sem vínculo com a empresa, a resposta é a mesma de uma empresa qualquer:
+    // não confirmamos sequer a existência de empresa de outro proprietário.
+    if (!canReadCompany(actor, company)) {
+      return Response.json({ error: 'empresa_nao_autorizada' }, { status: 403 });
+    }
 
     if (company.status === 'inativa') return Response.json({ error: 'empresa_inativa' }, { status: 403 });
     if (company.owner_cpf && !company.owner_name) {

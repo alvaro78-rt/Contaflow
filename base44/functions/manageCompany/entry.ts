@@ -1,6 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.54';
 import { loadSession } from '../../shared/sessionGuard.ts';
 import { onlyDigits } from '../../shared/cpf.ts';
+import { canManageCompany } from '../../shared/companyAccess.ts';
 
 const fail = (status, error) => Response.json({ error }, { status });
 
@@ -8,6 +9,7 @@ export default async function (req) {
   if (req.method !== 'POST') return fail(405, 'metodo_invalido');
   try {
     const body = await req.json().catch(() => null);
+    if (!body || typeof body !== 'object' || Array.isArray(body)) return fail(400, 'requisicao_invalida');
     const client = createClientFromRequest(req);
     const loaded = await loadSession(client, body?.token);
     if (loaded.error) return fail(loaded.status, loaded.error);
@@ -30,6 +32,8 @@ export default async function (req) {
     if (typeof body.id !== 'string' || !body.id.trim()) return fail(400, 'empresa_invalida');
     const company = await Company.get(body.id).catch(e => e.status === 404 ? null : Promise.reject(e));
     if (!company) return fail(404, 'empresa_inexistente');
+    // Desativar ou reativar exige vínculo explícito com a empresa.
+    if (!canManageCompany(master, company)) return fail(403, 'empresa_nao_autorizada');
     if (body.action === 'restore') {
       if (company.status === 'inativa') await Company.update(company.id, { status: 'ativa' });
       const restored = await Company.get(company.id);

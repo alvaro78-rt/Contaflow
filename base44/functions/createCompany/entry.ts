@@ -69,6 +69,9 @@ export default async function (req) {
       const result = await Company.upsert([companyKey], { key: ['name', 'owner_cpf'] });
       company = result.records[0];
     }
+    // Cadastrar a empresa NÃO concede acesso a ela. O vínculo de gestão
+    // (managed_by_cpf) só pode ser gravado com autorização do titular legítimo,
+    // nunca por quem apenas criou o registro.
     const resumed = Boolean(owners[0]?.password_hash || companies.length);
     if (!owner.password_hash) {
       await Employee.updateMany({ id: owner.id, cpf, access_role: 'admin', status: { $ne: 'desligado' },

@@ -8,13 +8,14 @@ import ScrollToTop from './components/ScrollToTop';
 import Layout from '@/components/Layout';
 import { SessionProvider } from '@/lib/SessionContext';
 import RequireSession from '@/components/RequireSession';
+import Diagnostics from '@/pages/Diagnostics';
 import AdminOnly from '@/components/AdminOnly';
 import PortalLogin from '@/pages/PortalLogin';
 import MasterSetup from '@/pages/MasterSetup';
 import MasterRecovery from '@/pages/MasterRecovery';
 import Companies from '@/pages/Companies';
+import CompanyAccess from '@/pages/CompanyAccess';
 import RequireMaster from '@/components/RequireMaster';
-import PortalRegister from '@/pages/PortalRegister';
 import PortalForgot from '@/pages/PortalForgot';
 import Dashboard from '@/pages/Dashboard';
 import EmployeeSearch from '@/pages/EmployeeSearch';
@@ -43,7 +44,7 @@ const AuthenticatedApp = () => {
   return (
     <Routes>
       <Route path="/login" element={<PortalLogin />} />
-      <Route path="/cadastro" element={<PortalRegister />} />
+      <Route path="/cadastro" element={<MasterSetup />} />
       <Route path="/recuperar-senha" element={<PortalForgot />} />
       <Route path="/mestre" element={<MasterSetup />} />
       <Route path="/recuperar-mestre" element={<MasterRecovery />} />
@@ -56,6 +57,7 @@ const AuthenticatedApp = () => {
           <Route path="/ponto" element={<TimeControl />} />
           <Route path="/contracheques" element={<Payslips />} />
           <Route path="/minha-senha" element={<MyAccount />} />
+          <Route path="/autorizar-gestao" element={<CompanyAccess />} />
           <Route element={<AdminOnly management />}>
             <Route path="/funcionarios" element={<EmployeeSearch />} />
             <Route path="/funcionarios/novo" element={<EmployeeForm />} />
@@ -66,6 +68,7 @@ const AuthenticatedApp = () => {
             <Route path="/jornadas" element={<Schedules />} />
           </Route>
           <Route element={<AdminOnly />}>
+            <Route path="/diagnostico" element={<Diagnostics />} />
             <Route path="/correcao-ponto" element={<TimeCorrection />} />
             <Route path="/rubricas" element={<Rubrics />} />
             <Route path="/ferias" element={<Vacations />} />

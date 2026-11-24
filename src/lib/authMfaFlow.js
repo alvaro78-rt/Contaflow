@@ -27,7 +27,7 @@ function authPath(suffix) {
 
 /**
  * @param {string} suffix
- * @param {{method?: string, body?: any, token?: string, headers?: Record<string, string>}} [options]
+ * @param {{ method?: string, body?: any, token?: string, headers?: Record<string, string> }} [options]
  */
 async function request(suffix, { method = 'POST', body, token, headers } = {}) {
   const response = await fetch(authPath(suffix), {

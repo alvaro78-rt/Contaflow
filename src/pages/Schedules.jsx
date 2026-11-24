@@ -79,12 +79,12 @@ export default function Schedules() {
       {list.length === 0 ? <Empty>Nenhuma jornada cadastrada.</Empty> : (
         <div className="divide-y divide-border border border-border bg-card">
           {list.map((s) => (
-            <div key={s.id} className="flex items-center justify-between px-5 py-3 text-sm">
-              <div>
+            <div key={s.id} className="flex flex-wrap items-center justify-between gap-2 px-5 py-3 text-sm">
+              <div className="min-w-0 break-words">
                 <p className="font-medium">{s.name} <span className="font-mono text-xs text-muted-foreground">{s.weekly_hours}h/sem</span></p>
                 <p className="text-xs text-muted-foreground">{s.work_days.map((d) => WEEKDAYS[d]).join(', ')} · {s.entry_time}–{s.exit_time} · intervalo {s.break_start || '—'}–{s.break_end || '—'}</p>
               </div>
-              <button className="text-xs text-emerald-700 underline" onClick={() => { setEditId(s.id); setF({ ...EMPTY, ...s }); }}>Alterar</button>
+              <button className="shrink-0 text-xs text-emerald-700 underline" onClick={() => { setEditId(s.id); setF({ ...EMPTY, ...s }); }}>Alterar</button>
             </div>
           ))}
         </div>

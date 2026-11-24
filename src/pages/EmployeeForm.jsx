@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { base44 } from '@/api/base44Client';
-import { Image } from '@/components/ui/image';
+import EmployeePhoto from '@/components/employees/EmployeePhoto';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -77,8 +77,11 @@ export default function EmployeeForm() {
     const file = e.target.files?.[0];
     if (!file) return;
     try {
-      const { file_url } = await base44.integrations.Core.UploadFile({ file });
-      setF((current) => ({ ...current, photo_url: file_url }));
+      // A foto fica em armazenamento privado; a exibição usa URL assinada temporária.
+      // UploadPrivateFile é chamável no cliente, mas ainda não consta nos tipos do SDK.
+      const core = /** @type {any} */ (base44.integrations.Core);
+      const { file_uri } = await core.UploadPrivateFile({ file });
+      setF((current) => ({ ...current, photo_url: file_uri }));
     } catch {
       setErrors(['Não foi possível enviar a foto.']);
     }
@@ -96,12 +99,12 @@ export default function EmployeeForm() {
     if (!f.position_id) errs.push('Selecione o cargo.');
     if (!f.schedule_id) errs.push('Selecione a jornada.');
     if (!(Number(f.base_salary) > 0)) errs.push('Informe o salário-base.');
-    if (password && (password.length < 6 || password.length > 128)) errs.push('A senha deve ter entre 6 e 128 caracteres.');
+    if ((!id || password) && (password.length < 6 || password.length > 128)) errs.push('Defina uma senha inicial com 6 a 128 caracteres.');
     setErrors(errs);
     if (errs.length) return;
     setBusy(true);
     try {
-      const employee = { ...f, cpf: onlyDigits(f.cpf), pis: onlyDigits(f.pis), base_salary: Number(f.base_salary), weekly_hours: f.weekly_hours === '' ? undefined : Number(f.weekly_hours) };
+      const employee = { ...f, cpf: onlyDigits(f.cpf), username: onlyDigits(f.cpf), pis: onlyDigits(f.pis), base_salary: Number(f.base_salary), weekly_hours: f.weekly_hours === '' ? undefined : Number(f.weekly_hours) };
       await saveEmployee(token, { action: 'save', expected_company_id: session.company_id, id, employee, password });
       toast({ title: id ? 'Cadastro atualizado' : 'Cadastro do funcionário realizado' });
       navigate('/funcionarios');
@@ -127,7 +130,7 @@ export default function EmployeeForm() {
       <FormSection code="01" title="Dados pessoais">
         <div className="flex items-center gap-5 sm:col-span-2">
           <div className="grid h-20 w-20 shrink-0 place-items-center overflow-hidden border border-border bg-secondary">
-            {f.photo_url ? <Image src={f.photo_url} alt={f.full_name} className="h-20 w-20" fittingType="fill" /> : <span className="font-mono text-lg text-muted-foreground">{(f.full_name || '?').slice(0, 2).toUpperCase()}</span>}
+            <EmployeePhoto value={f.photo_url} name={f.full_name} className="h-20 w-20" />
           </div>
           <div className="space-y-1.5">
             <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Foto do funcionário</p>
@@ -172,8 +175,8 @@ export default function EmployeeForm() {
         <Field label="Salário-base (R$)"><Input type="number" step="0.01" className="font-mono" value={f.base_salary} onChange={set('base_salary')} /></Field>
       </FormSection>
       <FormSection code="05" title="Acesso ao sistema">
-        <Field label="Nome de usuário (opcional)"><Input value={f.username} onChange={set('username')} autoComplete="off" /></Field>
-        <Field label={id ? 'Senha (deixe em branco para manter)' : 'Senha inicial (opcional)'}>
+        <Field label="Nome de usuário (CPF)"><Input className="font-mono" value={formatCpf(f.cpf)} readOnly placeholder="Informado no campo CPF" autoComplete="off" /></Field>
+        <Field label={id ? 'Senha (deixe em branco para manter)' : 'Senha inicial (obrigatória)'}>
           <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••" maxLength={128} autoComplete="new-password" />
         </Field>
         <Field label="Perfil de acesso" className="sm:col-span-2">
@@ -184,7 +187,7 @@ export default function EmployeeForm() {
           )}
         </Field>
         <p className="text-xs text-muted-foreground sm:col-span-2">
-          O login é feito com o CPF. Se a senha inicial ficar em branco, o cadastro fica salvo sem acesso até a senha ser definida.
+          O nome de usuário é sempre o CPF. Para novos funcionários, o gerente precisa definir a senha inicial. Ao editar um funcionário existente, a senha em branco mantém a atual.
         </p>
         <p className="border border-border bg-secondary/50 px-3 py-2 text-xs text-muted-foreground sm:col-span-2">
           Para passar o sistema a outro dono, use <strong>Minha conta → Trocar o dono do sistema</strong>: você escolhe o funcionário, define a senha dele e o seu acesso passa a ser de funcionário.

@@ -1,3 +1,4 @@
+/// <reference types="vite/client" />
 import { getAccessToken } from '@base44/sdk';
 import { resolveBase44AppId, resolveBase44FunctionsVersion } from './base44BackendUrl';
 

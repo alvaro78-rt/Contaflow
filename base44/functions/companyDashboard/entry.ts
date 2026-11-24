@@ -1,6 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.54';
 
 import { loadSession } from '../../shared/sessionGuard.ts';
+import { canReadCompany } from '../../shared/companyAccess.ts';
 
 // Leitura do painel do dono. Empresa e perfil saem da sessão validada aqui, nunca do navegador.
 // O corpo da requisição só traz o token: não existe parâmetro de empresa.
@@ -32,6 +33,9 @@ export default async function (req) {
       .get(companyId)
       .catch((e) => (e.status === 404 ? null : Promise.reject(e)));
     if (!company) return Response.json({ error: 'empresa_nao_encontrada' }, { status: 404 });
+    if (role === 'master' && !canReadCompany(actor, company)) {
+      return Response.json({ error: 'empresa_nao_autorizada' }, { status: 403 });
+    }
 
     if (company.status === 'inativa') return Response.json({ error: 'acesso_encerrado' }, { status: 403 });
     const d = new Date();

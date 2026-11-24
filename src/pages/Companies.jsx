@@ -128,27 +128,26 @@ export default function Companies() {
   };
 
   return (
-    <div className="min-h-screen">
-      <header className="border-b border-border bg-background/90 backdrop-blur">
-        <div className="mx-auto flex h-14 max-w-4xl items-center justify-between gap-3 px-5">
+    <div className="cf-companies-screen min-h-screen">
+      <header className="cf-company-header cf-app-header">
+        <div className="cf-company-header-inner mx-auto flex min-h-14 max-w-6xl flex-wrap items-center justify-between gap-3 px-5 py-2">
           <span className="flex items-center gap-2 font-semibold tracking-tight">
-            <span className="grid h-7 w-7 place-items-center rounded-lg bg-primary font-mono text-[12px] font-bold text-primary-foreground">C</span>
-            <span>Conta<span className="text-emerald-600">Flow</span></span>
+            <span className="cf-brand">Conta<span>Flow</span></span>
           </span>
           <div className="flex items-center gap-3">
             {session?.company_id && (
-              <Link to="/" className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-2.5 py-1.5 text-xs font-medium hover:border-primary/40">
+              <Link to="/" className="cf-header-action inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium">
                 <ArrowLeft className="h-3.5 w-3.5" /> Voltar ao painel
               </Link>
             )}
-            <span className="hidden truncate text-xs text-muted-foreground sm:inline">{session?.name}</span>
-            <button onClick={leave} className="flex items-center gap-1.5 border border-border bg-card px-2.5 py-1.5 text-xs font-medium transition-colors hover:border-destructive hover:text-destructive">
+            <div className="min-w-0 text-right"><p className="truncate text-xs font-medium">{session?.name}</p><p className="text-[10px] uppercase text-blue-100">Conta mestre</p></div>
+            <button onClick={leave} className="cf-header-action flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium">
               <LogOut className="h-3.5 w-3.5" /> Sair
             </button>
           </div>
         </div>
       </header>
-      <main className="mx-auto max-w-4xl px-5 py-10">
+      <main className="cf-companies-main mx-auto max-w-5xl px-5 py-8">
         <PageHeader
           code="MESTRE"
           title="Minhas empresas"
@@ -157,7 +156,7 @@ export default function Companies() {
         {notice && <p role="status" className="mb-3 text-sm text-emerald-700">{notice}</p>}
         {actionError && <p role="alert" className="mb-3 text-sm text-destructive">{actionError}</p>}
         <div className="grid gap-6 md:grid-cols-[1.2fr_1fr] md:items-start">
-          <div className="border border-border bg-card">
+          <div className="cf-company-list space-y-3">
             {loading && companies === null && <p className="px-4 py-6 text-sm text-muted-foreground">Carregando…</p>}
             {error && (
               <div className="space-y-3 px-4 py-6">
@@ -174,17 +173,17 @@ export default function Companies() {
               <p className="px-4 py-6 text-sm text-muted-foreground">Nenhuma empresa cadastrada. Use o formulário para criar a primeira empresa.</p>
             )}
             {!error && companies?.map((company) => (
-              <div key={company.id} className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3 last:border-0">
+              <div key={company.id} className="cf-company-card flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card px-4 py-3 shadow-sm">
                 <div className="min-w-0">
-                  <p className="truncate font-medium">{company.name}</p>
+                  <p className="truncate font-semibold text-primary">{company.name}</p>
                   <p className="truncate text-xs text-muted-foreground">
                     {company.owner_name ? `Dono: ${company.owner_name}` : 'Sem dono definido'}
                     {company.owner_cpf ? ` · ${formatCpf(company.owner_cpf)}` : ''}
                   </p>
                 </div>
-                <div className="flex shrink-0 items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <span
-                    className={`hidden border px-2 py-1 font-mono text-[10px] uppercase tracking-wide sm:inline ${
+                    className={`hidden rounded-md border bg-secondary px-2 py-1 text-[10px] font-semibold uppercase tracking-wide sm:inline ${
                       company.owner_linked ? 'border-emerald-600 text-emerald-700' : 'border-border text-muted-foreground'
                     }`}
                   >
@@ -203,10 +202,10 @@ export default function Companies() {
               <h2 className="flex items-center gap-2 font-semibold"><Building2 className="h-4 w-4 text-primary" /> Criar empresa</h2>
               <Field label="Nome da empresa"><Input required minLength={2} maxLength={150} value={name} onChange={event => setName(event.target.value)} /></Field>
               <p className="text-xs text-muted-foreground">Sua conta mestre será o dono desta empresa.</p>
-              <Button type="submit" disabled={busy || Boolean(entrando) || name.trim().length < 2}>Criar empresa</Button>
+              <Button className="cf-create-company" type="submit" disabled={busy || Boolean(entrando) || name.trim().length < 2}>Criar empresa</Button>
             </form>
             {inactiveCompanies.length > 0 && (
-              <section className="space-y-3 border border-border bg-card p-5">
+              <section className="space-y-3 rounded-xl border border-border bg-card p-5 shadow-sm">
                 <h2 className="font-semibold">Empresas desativadas</h2>
                 <p className="text-xs text-muted-foreground">Reative uma empresa para voltar a acessar seus registros e funcionários existentes.</p>
                 {inactiveCompanies.map(company => (
