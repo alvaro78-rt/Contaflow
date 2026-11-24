@@ -20,7 +20,7 @@ if (!checks.length || checks.includes('backend')) {
   const active = response.headers.get('X-ContaFlow-Payroll-Release');
   await response.body?.cancel();
   if (response.status !== 405 || active !== EXPECTED_PAYROLL_RELEASE) {
-    console.error(`payrollService: HTTP ${response.status}. A versão pública esperada (${EXPECTED_PAYROLL_RELEASE}) ainda não foi confirmada.`);
+    console.error(`payrollService: HTTP ${response.status}. Versão recebida: ${active ?? 'cabeçalho ausente'}. Versão esperada: ${EXPECTED_PAYROLL_RELEASE}.`);
     process.exitCode = 1;
   } else {
     console.log(`payrollService público: ${active}`);
