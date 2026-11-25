@@ -50,7 +50,7 @@ export default function AttendanceConference() {
       <PageHeader
         code="RF12"
         title="Conferência de frequência"
-        description="O mês já chega apurado: presenças, atrasos, horas extras, faltas presumidas, férias e pendências são calculados pelas marcações e pela jornada cadastrada. O RH confere as faltas presumidas, anexa justificativas e autoriza a apuração usada na folha."
+        description="Revise os dias sem marcação, registre a justificativa ou confirme a falta. A folha oficial usa a conferência autorizada ao fim do mês."
       />
       <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_200px] md:items-end">
         <Field label="Funcionário">
@@ -106,7 +106,7 @@ export default function AttendanceConference() {
           )}
           <p className="text-xs text-muted-foreground">
             O mês chega apurado automaticamente com {conf.data.marks_count} marcação(ões) no período.
-            Você só decide sobre as faltas presumidas e autoriza a apuração — nada é lançado dia a dia.
+            Confira cada dia sem marcação. No mês em andamento, salve as decisões em rascunho.
           </p>
           <ConferenceForm
             data={conf.data}
@@ -115,7 +115,7 @@ export default function AttendanceConference() {
             onBasis={conf.setBasis}
             evidence={conf.evidence}
             onEvidence={conf.setEvidence}
-            disabled={authorized || !conf.data.closed}
+            disabled={authorized}
             busy={conf.busy}
             canAuthorize={conf.data.can_authorize}
             confirmed={confirmed}

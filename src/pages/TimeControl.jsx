@@ -13,7 +13,7 @@ import TimeTable from '@/components/time/TimeTable';
 import TimeMarkForm from '@/components/time/TimeMarkForm';
 import { currentCompetence } from '@/lib/format';
 import EmployeeTimeClock from '@/pages/EmployeeTimeClock';
-import { groupByDay, monthStats, fmtMin } from '@/lib/payroll';
+import { groupByDay, fmtMin } from '@/lib/payroll';
 
 export default function TimeControl() {
   const { session } = useSession();
@@ -54,18 +54,18 @@ function ManagerTimeControl() {
   }, [emp, month, session, revision]);
 
   // A apuração vem do servidor: faltas presumidas, pendências, férias e afastamentos.
-  const st = audit?.stats || monthStats(records, schedule, month, undefined, emp?.admission_date);
+  const st = audit?.stats;
   const kinds = audit
     ? Object.fromEntries(audit.days
       .filter((day) => !['presenca', 'folga'].includes(day.kind))
       .map((day) => [day.date, day.kind]))
     : {};
   const cards = [
-    ['Horas trabalhadas', `${fmtMin(st.worked)}h`],
-    ['Faltas presumidas', st.absences || 0],
-    ['Pendências de ponto', st.pending || 0],
-    ['Atrasos', `${fmtMin(st.late)}h`],
-    ['Horas extras', `${fmtMin(st.overtime)}h`],
+    ['Horas trabalhadas', st && records.length ? `${fmtMin(st.worked)}h` : '—'],
+    ['Dias sem marcação', st?.absences ?? '—'],
+    ['Pendências de ponto', st?.pending ?? '—'],
+    ['Atrasos', st && records.length ? `${fmtMin(st.late)}h` : '—'],
+    ['Horas extras', st && records.length ? `${fmtMin(st.overtime)}h` : '—'],
   ];
 
   return (

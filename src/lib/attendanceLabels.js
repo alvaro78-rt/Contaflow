@@ -1,6 +1,7 @@
 export const KIND_LABEL = {
   presenca: 'Presença',
-  falta_presumida: 'Falta presumida',
+  falta_presumida: 'Sem marcação',
+  em_andamento: 'Dia em andamento',
   pendencia: 'Pendência de ponto',
   folga: 'Folga',
   feriado: 'Feriado',
@@ -12,6 +13,7 @@ export const KIND_LABEL = {
 export const KIND_STYLE = {
   presenca: 'border-emerald-600 text-emerald-700',
   falta_presumida: 'border-amber-600 text-amber-700',
+  em_andamento: 'border-border text-muted-foreground',
   pendencia: 'border-destructive text-destructive',
   folga: 'border-border text-muted-foreground',
   feriado: 'border-border text-muted-foreground',

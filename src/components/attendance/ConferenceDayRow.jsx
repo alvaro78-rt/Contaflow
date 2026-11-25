@@ -51,7 +51,7 @@ export default function ConferenceDayRow({ day, situations, disabled, employeeId
             onValueChange={(value) => onChange({ situation: value })}
             disabled={disabled}
           >
-            <SelectTrigger><SelectValue placeholder="Manter falta (desconta)" /></SelectTrigger>
+            <SelectTrigger><SelectValue placeholder="Selecionar resultado da conferência" /></SelectTrigger>
             <SelectContent>
               {situations.map((item) => (
                 <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>
@@ -81,7 +81,7 @@ export default function ConferenceDayRow({ day, situations, disabled, employeeId
           {day.situation
             ? SITUATION_LABEL[day.situation]
             : day.editable
-              ? 'Falta confirmada — desconta na folha.'
+              ? 'Aguardando conferência.'
               : 'Classificado automaticamente pela jornada e pelas marcações.'}
         </p>
       )}

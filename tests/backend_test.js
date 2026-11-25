@@ -674,9 +674,14 @@ Deno.test('apuracao automatica presume falta e exige conferencia antes do descon
   assert.equal(blocked.error, 'conferencia_necessaria');
   assert.deepEqual(blocked.presumed_dates, ['2026-01-05']);
   assert.equal(db.Payroll.length, 0);
-  const authorized = await call(conference, 'authorize', {
-    employee_id: 'worker', competence: '2026-01', days: [], basis: conferenceBasis,
-  });
+  const params = { employee_id: 'worker', competence: '2026-01', basis: conferenceBasis };
+  const undecided = await call(conference, 'authorize', { ...params, days: [] });
+  assert.equal(undecided.error, 'conferencia_incompleta');
+  assert.equal(db.AttendanceConference.length, 0);
+  const days = [{ date: '2026-01-05', situation: 'falta_injustificada' }];
+  const restricted = await call(conference, 'authorize', { ...params, days }, 'manager');
+  assert.equal(restricted.status, 403);
+  const authorized = await call(conference, 'authorize', { ...params, days });
   assert.equal(authorized.status, 200);
   assert.equal(authorized.conference.status, 'autorizada');
   assert.equal(authorized.conference.authorized_by_name, 'Teste rh');

@@ -149,7 +149,7 @@ async function calculate({ entities, companyId, actor }, emp, body, setStage, dr
     return Response.json({
       error: 'ponto_sem_registros',
       problems: [
-        'Não há marcações nesta competência. Abra a conferência de frequência (RH), confira a apuração automática das faltas presumidas e autorize antes de gerar a folha real.',
+        'Não há marcações nesta competência. Confira cada dia sem marcação e autorize a frequência antes de gerar a folha oficial.',
       ],
       conference_required: true,
     }, { status: 422 });
@@ -195,7 +195,7 @@ async function calculate({ entities, companyId, actor }, emp, body, setStage, dr
       return Response.json({
         error: 'conferencia_necessaria',
         problems: [
-          'A apuração automática identificou ' + presumed.length + ' falta(s) presumida(s) por ausência de marcação (' +
+          'A apuração encontrou ' + presumed.length + ' dia(s) sem marcação (' +
           presumed.join(', ') + '). Confira a frequência, justifique o que estiver comprovado e autorize a conferência antes de aplicar descontos.',
         ],
         presumed_dates: presumed,

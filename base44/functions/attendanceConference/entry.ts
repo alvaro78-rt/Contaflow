@@ -104,7 +104,7 @@ async function view(ctx) {
     return {
       ...day,
       editable: day.kind === 'falta_presumida',
-      situation: decision?.situation || '',
+      situation: day.kind === 'falta_presumida' ? decision?.situation || '' : '',
       justification: decision?.justification || '',
       evidence_uri: decision?.evidence_uri || '',
       evidence_name: decision?.evidence_name || '',
@@ -149,7 +149,10 @@ async function view(ctx) {
 
 async function persist(ctx, body, authorize) {
   const { entities, companyId, actor, employee, schedule, competence, closed, conference } = ctx;
-  if (!closed) return fail(422, 'competencia_aberta');
+  if (authorize && !AUTHORIZERS.includes(actor.access_role)) return fail(403, 'sem_permissao');
+  if (competence > localToday().slice(0, 7) || (authorize && !closed)) {
+    return fail(422, 'competencia_aberta');
+  }
   if (ctx.duplicates) return fail(409, 'conferencia_duplicada');
   if (!schedule) return incomplete(['Defina a jornada de trabalho do funcionário antes de conferir a frequência.']);
   if (employee.status !== 'ativo' || employee.contract_type !== 'CLT') {

@@ -26,9 +26,9 @@ const ERROR_MESSAGES = {
   admissao_no_mes: 'A admissão ocorreu dentro da competência. O fechamento automático exige conferência do cálculo proporcional.',
   funcionario_desligado: 'O funcionário está desligado. Não é possível gerar esta folha por este fluxo.',
   ponto_nao_conferido: 'O ponto da competência não está conferido. Confira os registros do mês antes de gerar a folha.',
-  ponto_sem_registros: 'Não existem marcações nesta competência. Abra a conferência de frequência, confira a apuração automática das faltas presumidas e autorize antes de gerar a folha real.',
+  ponto_sem_registros: 'Não existem marcações nesta competência. Confira a frequência antes de gerar a folha oficial.',
   ponto_pendente: 'Há marcações incompletas no período. Corrija o ponto na tela de correção antes de gerar a folha.',
-  conferencia_necessaria: 'A apuração automática identificou faltas presumidas. Confira e autorize a conferência de frequência antes de aplicar descontos.',
+  conferencia_necessaria: 'Revise cada dia sem marcação e autorize a conferência antes de aplicar descontos na folha oficial.',
   conferencia_incompleta: 'A conferência de frequência não está completa: confira as faltas presumidas, as justificativas e as evidências antes de gerar a folha.',
   conferencia_autorizada: 'A conferência desta competência já está autorizada. Ajuste a apuração antes de gerar a folha.',
   conferencia_duplicada: 'Existem conferências duplicadas para esta competência. Solicite revisão antes de continuar.',
@@ -79,7 +79,7 @@ function isAttendanceProblem(data) {
 }
 
 // Relatório individual do RH, separado do contracheque.
-function PayrollDocuments({ payroll, scheduleName, weeklyHours }) {
+export function PayrollDocuments({ payroll, scheduleName, weeklyHours }) {
   const estimated = payroll.preview || payroll.preview_only ||
     ['previa', 'simulacao'].includes(payroll.status);
   const finalized = !estimated && payroll.status === 'finalizada';
@@ -348,7 +348,19 @@ export default function PayrollGenerate() {
         if (existing) { setPayroll(existing); return; }
         const employeeSchedule = catalog.schedules.find((row) => row.id === employee.schedule_id) || null;
         if (!employeeSchedule) throw new Error('jornada_ausente');
-        const table = await loadPreviewLegalTable(session, comp);
+        const [table, attendance] = await Promise.all([
+          loadPreviewLegalTable(session, comp),
+          base44.functions.invoke('attendanceConference', {
+            action: 'view',
+            token: session.token,
+            expected_company_id: session.company_id,
+            employee_id: employee.id,
+            competence: comp,
+          }).then(
+            ({ data }) => data?.ok && !data.duplicates && data.stats && Array.isArray(data.days) ? data : null,
+            () => null,
+          ),
+        ]);
         if (!active) return;
         const context = {
           employee,
@@ -356,6 +368,7 @@ export default function PayrollGenerate() {
           positionName: catalog.positions.find((row) => row.id === employee.position_id)?.name || '',
           competence: comp,
           table,
+          attendance,
         };
         const calculated = buildContractualPreview(context);
         setScenarioContext(context);
@@ -383,24 +396,50 @@ export default function PayrollGenerate() {
     return () => { active = false; };
   }, [emp?.id, comp, session?.token, session?.company_id, catalog, admissionProblem, futureProblem]);
 
+  // Arquiva somente o cálculo exibido, em entidade separada da folha oficial.
+  const archivePreview = async (calculated) => {
+    setPreview(calculated);
+    setShowPreview(true);
+    try {
+      const { data } = await base44.functions.invoke('payrollSimulationHistory', {
+        action: 'save', token: session.token,
+        expected_company_id: session.company_id,
+        employee_id: emp.id, competence: comp, snapshot: calculated,
+      });
+      if (!data?.ok || !data?.record?.id) throw new Error('historico_nao_confirmado');
+      setMessage('Estimativa salva em Folhas anteriores.');
+    } catch {
+      setMessage('Cálculo exibido, mas o histórico não foi confirmado. Clique em Gerar folha para tentar salvar novamente.');
+    }
+  };
+
   const process = async () => {
     if (!emp || !comp || loading || preparing || admissionProblem || futureProblem || !session?.token) return;
     if (payroll) return;
     if (scenarioMode) {
       if (!scenarioContext || scenarioContext.employee.id !== emp.id || scenarioContext.competence !== comp) return;
+      setLoading(true);
+      setMessage('');
       try {
-        setPreview(buildContractualPreview({ ...scenarioContext, scenario }));
+        const calculated = buildContractualPreview({ ...scenarioContext, scenario });
         setProblems([]);
-        setShowPreview(true);
+        await archivePreview(calculated);
       } catch (error) {
         setShowPreview(false);
         setProblems([error.message || 'Confira os dados da estimativa.']);
-      }
+      } finally { setLoading(false); }
       return;
     }
     if (comp === currentMonth) {
-      if (preview) { setProblems([]); setShowPreview(true); }
-      else setProblems(['Não foi possível calcular a estimativa. Confira o cadastro, a jornada e a tabela legal.']);
+      setLoading(true);
+      setMessage('');
+      try {
+        if (scenarioContext) {
+          setProblems([]);
+          await archivePreview(buildContractualPreview(scenarioContext));
+        } else setProblems(['Não foi possível calcular a estimativa. Confira o cadastro, a jornada e a tabela legal.']);
+      } catch (error) { setProblems([error.message || 'Não foi possível calcular a estimativa.']); }
+      finally { setLoading(false); }
       return;
     }
     setLoading(true);
@@ -443,8 +482,8 @@ export default function PayrollGenerate() {
       // Nunca exibir uma estimativa como se tivesse sido gravada no banco.
       if (response.data.preview_only || !response.data.payroll.id) {
         setAttendancePending(true);
-        if (preview) {
-          setShowPreview(true);
+        if (preview && scenarioContext) {
+          await archivePreview(buildContractualPreview(scenarioContext));
         } else {
           setProblems(['O servidor não confirmou uma folha oficial. Confira o ponto ou os dados necessários.']);
         }
@@ -455,6 +494,7 @@ export default function PayrollGenerate() {
       if (response.data.existing || response.data.existing_final) {
         setMessage('Folha já registrada. Os valores originais foram preservados.');
       } else {
+        setMessage('Folha registrada em Folhas anteriores.');
         toast({ title: response.data.payroll.status === 'finalizada' ? 'Folha finalizada com sucesso' : 'Folha calculada e salva para conferência' });
       }
     } catch (error) {
@@ -462,9 +502,9 @@ export default function PayrollGenerate() {
       const attendanceRefusal = isAttendanceProblem(data);
       // A pendência oficial de ponto continua protegida no servidor. Para a
       // apresentação, mostramos somente a prévia local, sem gravar dados.
-      if (attendanceRefusal && preview) {
+      if (attendanceRefusal && preview && scenarioContext) {
         setAttendancePending(true);
-        setShowPreview(true);
+        await archivePreview(buildContractualPreview(scenarioContext));
         return;
       }
       if (attendanceRefusal) setAttendancePending(true);
@@ -514,11 +554,17 @@ export default function PayrollGenerate() {
         </label>
         {scenarioMode && <>
           <div className="grid gap-3 sm:grid-cols-3">
-            {[[ 'vacationDays', 'Dias de férias', '30', '1'], ['absences', 'Faltas injustificadas (dias)', '31', '1'], ['extraHours', 'Horas extras', '200', '0.25']].map(([key,label,max,step]) => <Field key={key} label={label}><Input type="number" min="0" max={max} step={step} value={scenario[key]} onChange={e => { setScenario(old => ({ ...old, [key]: e.target.value })); setShowPreview(false); }} /></Field>)}
+            {[[ 'vacationDays', 'Dias de férias', '30', '1'], ['absences', 'Faltas injustificadas (dias)', '31', '1'], ['extraHours', 'Horas extras', '200', '0.25']].map(([key,label,max,step]) => <Field key={key} label={label}><Input type="number" disabled={loading || preparing} min="0" max={max} step={step} value={scenario[key]} onChange={e => { setScenario(old => ({ ...old, [key]: e.target.value })); setShowPreview(false); }} /></Field>)}
           </div>
           <p className="text-xs text-muted-foreground">Estimativa informada manualmente. Não altera ponto, férias ou folhas oficiais. Não inclui médias, DSR nem compensação de férias antecipadas.</p>
         </>}
       </div>}
+      {!payroll && emp && comp === currentMonth && !scenarioMode && (
+        <p className="text-sm text-muted-foreground">
+          Mês em andamento. A prévia considera o salário proporcional aos dias corridos do período e as faltas
+          confirmadas na conferência. A folha oficial fica disponível após o encerramento.
+        </p>
+      )}
       {preparing && <p className="text-sm text-muted-foreground">Carregando cadastro, jornada e tabela legal…</p>}
       {futureProblem && <p role="alert" className="text-sm text-destructive">{futureProblem}</p>}
       {admissionProblem && <p role="alert" className="text-sm text-destructive">{admissionProblem}</p>}
@@ -537,7 +583,10 @@ export default function PayrollGenerate() {
           </Button>
         </div>
       )}
-      {message && <p className="text-sm text-amber-700">{message}</p>}
+      {message && <p role="status" className="text-sm text-muted-foreground">{message}</p>}
+      {(payroll || (preview && showPreview)) && (session?.master || ['master', 'admin'].includes(session?.role)) && (
+        <Button variant="outline" asChild><Link to="/folhas-anteriores">Consultar folhas anteriores</Link></Button>
+      )}
       {payroll && (
         <div className="space-y-4">
           {!payroll.preview_only && <PayrollActions key={payroll.id + payroll.status} payroll={payroll} onChange={setPayroll} />}

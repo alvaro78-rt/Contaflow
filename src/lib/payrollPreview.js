@@ -4,6 +4,7 @@ import { scheduledMinutes } from './payroll.js';
 
 export const PREVIEW_LABEL = 'Simulação — sem validade financeira';
 const pad = (n) => String(n).padStart(2, '0');
+const localDate = new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Recife' });
 export function taxDependentsOf(employee) {
   if (Number.isInteger(employee?.tax_dependents) && employee.tax_dependents >= 0 && employee.tax_dependents <= 99) return employee.tax_dependents;
   if (!Array.isArray(employee?.dependents)) return null;
@@ -14,13 +15,13 @@ export function taxDependentsOf(employee) {
 export function contractualDays({ employee, schedule, competence, today = new Date() }) {
   const [year, month] = competence.split('-').map(Number);
   const last = new Date(year, month, 0).getDate();
-  const limit = `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`;
+  const limit = localDate.format(today);
   const admission = employee?.admission_date || '';
   let days = 0;
   for (let day = 1; day <= last; day += 1) {
     const date = `${competence}-${pad(day)}`;
     if (date > limit || (admission && date < admission)) continue;
-    if (!(schedule?.work_days || []).includes(new Date(year, month - 1, day).getDay())) continue;
+    if (!(schedule?.work_days || []).includes(new Date(date).getUTCDay())) continue;
     days += 1;
   }
   return days;
@@ -32,10 +33,16 @@ export function contractualStats({ employee, schedule, competence, today = new D
 }
 export const previewCharge = (payroll, description) => (payroll?.deductions || []).find(item => item.description === description)?.value || 0;
 export const previewFgts = payroll => (payroll?.informatives || []).find(item => String(item.description).startsWith('FGTS'))?.value || 0;
-export function buildContractualPreview({ employee, schedule, positionName, competence, table, today = new Date(), scenario = null }) {
+export function buildContractualPreview({ employee, schedule, positionName, competence, table, today = new Date(), scenario = null, attendance = null }) {
   const stats = contractualStats({ employee, schedule, competence, today });
   const dependents = taxDependentsOf(employee);
   const [year, month] = competence.split('-').map(Number);
+  const todayIso = localDate.format(today);
+  const calendarDays = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  const throughDay = todayIso.startsWith(competence + '-') ? Number(todayIso.slice(-2)) : undefined;
+  const admission = employee.admission_date || '';
+  const firstDay = admission.startsWith(competence + '-') ? Number(admission.slice(-2)) : 1;
+  const availableDays = Math.max(0, (throughDay ?? calendarDays) - firstDay + 1);
   const date = new Date(Date.UTC(year, month, 5));
   const paymentDate = date.toISOString().slice(0, 10);
   const rubrics = [];
@@ -46,10 +53,9 @@ export function buildContractualPreview({ employee, schedule, positionName, comp
     vacationDays = Number(scenario.vacationDays);
     const absences = Number(scenario.absences);
     const extras = Number(scenario.extraHours);
-    const calendarDays = new Date(Date.UTC(year, month, 0)).getUTCDate();
-    const admission = employee.admission_date || '';
-    const availableDays = admission.startsWith(competence + '-') ? calendarDays - Number(admission.slice(8,10)) + 1 : calendarDays;
-    const workDays = contractualDays({ employee, schedule, competence, today: new Date(year, month, 0) });
+    const workDays = throughDay ? stats.days : contractualDays({
+      employee, schedule, competence, today: new Date(Date.UTC(year, month, 0, 12)),
+    });
     if (!Number.isInteger(vacationDays) || vacationDays < 0 || vacationDays > Math.min(30, availableDays) ||
         !Number.isInteger(absences) || absences < 0 || absences > workDays ||
         !Number.isFinite(extras) || extras < 0 || extras > 200 || vacationDays + absences > availableDays ||
@@ -58,16 +64,26 @@ export function buildContractualPreview({ employee, schedule, positionName, comp
     }
     const salary = Number(employee.base_salary);
     vacationPay = round(salary * vacationDays / 30);
-    const partial = availableDays < calendarDays;
-    const regular = partial ? round(salary * availableDays / calendarDays) : round(salary);
+    const regular = round(salary * availableDays / calendarDays);
     vacationPay = Math.min(regular, vacationPay);
     if (vacationDays) rubrics.push({ category: 'provento', auto_apply: true, name: 'Terço constitucional de férias', fixed_value: round(vacationPay / 3) });
     stats.absences = absences;
     stats.overtime = Math.round(extras * 60);
     // Horas efetivamente trabalhadas não são conhecidas em uma simulação.
     stats.worked = 0;
+  } else if (attendance) {
+    const reviewed = attendance.days.filter(day => day.editable && day.situation === 'falta_injustificada');
+    Object.assign(stats, {
+      worked: attendance.stats.worked,
+      late: attendance.stats.late,
+      overtime: attendance.stats.overtime,
+      absences: reviewed.length,
+    });
   }
-  const payroll = buildPayroll({ employee, positionName, competence, stats, rubrics, table, paymentDate, taxDependents: dependents ?? 0, admissionDate: employee.admission_date || '' });
+  const payroll = buildPayroll({
+    employee, positionName, competence, stats, rubrics, table, paymentDate,
+    taxDependents: dependents ?? 0, admissionDate: admission, throughDay,
+  });
   if (scenario) {
     if (vacationDays && payroll.earnings[0]) {
       const original = payroll.earnings[0];

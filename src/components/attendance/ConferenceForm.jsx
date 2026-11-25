@@ -18,7 +18,7 @@ export default function ConferenceForm({
             Apuração automática · {data.competence}
           </p>
           <p className="text-xs text-muted-foreground">
-            {days.length} dia(s) · {presumed} falta(s) presumida(s) para conferir
+            {days.length} dia(s) · {presumed} dia(s) sem marcação para conferir
           </p>
         </div>
         {days.length === 0 && (
@@ -77,10 +77,9 @@ export default function ConferenceForm({
         )}
       </div>
       <p className="text-xs text-muted-foreground">
-        Faltas são presumidas apenas em dias de jornada encerrados sem nenhuma marcação. Marcações
-        incompletas são pendência de ponto e impedem a autorização. Folgas, feriados nacionais,
-        férias e afastamentos não geram falta. Cada semana com falta injustificada perde um dia de
-        DSR, aplicado automaticamente na folha.
+        Dias sem marcação precisam de conferência individual. O desconto só entra na folha oficial após
+        a confirmação da falta injustificada e a autorização da competência. Corrija as marcações
+        incompletas antes de autorizar.
       </p>
     </div>
   );

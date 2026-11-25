@@ -34,7 +34,7 @@ test('prévia conta apenas os dias de jornada da competência', () => {
 
 test('prévia é identificada como demonstrativa, sem validade financeira', () => {
   assert.equal(PREVIEW_LABEL, 'Simulação — sem validade financeira');
-  assert.equal(preview().preview_label, 'Simulação — sem validade financeira');
+  assert.equal(preview().preview_label, PREVIEW_LABEL);
 });
 
 test('resumo da prévia mostra INSS, IRRF e FGTS, inclusive quando não há desconto', () => {
@@ -108,4 +108,33 @@ test('prévia não grava nada: módulo sem SDK, backend ou entidades', () => {
   assert.ok(!source.includes('functions.invoke'));
   assert.ok(!source.includes('entities.'));
   assert.ok(!source.includes('fetch('));
+});
+test('em 25 de novembro o salário-base de R$ 1.621 gera prévia de 25/30 dias', () => {
+  const partial = buildContractualPreview({
+    employee: employee({ base_salary: 1621 }), schedule, table,
+    competence: '2026-11', today: new Date('2026-11-25T18:00:00Z'),
+  });
+  assert.equal(partial.base_salary, 1621);
+  assert.equal(partial.earnings[0].value, 1350.83);
+  assert.match(partial.earnings[0].description, /25\/30 dias/);
+  assert.equal(partial.preview_only, true);
+  assert.equal(partial.deductions.some(row => row.description.startsWith('Faltas')), false);
+});
+
+test('a prévia deduz só a falta confirmada na conferência e inclui as horas extras apuradas', () => {
+  const partial = buildContractualPreview({
+    employee: employee({ base_salary: 1621 }), schedule, table,
+    competence: '2026-11', today: new Date('2026-11-25T18:00:00Z'),
+    attendance: {
+      stats: { worked: 440, late: 0, overtime: 60, absences: 3 },
+      days: [
+        { editable: true, situation: 'falta_justificada' },
+        { editable: true, situation: '' },
+        { editable: true, situation: 'falta_injustificada' },
+      ],
+    },
+  });
+  assert.equal(partial.time_summary.absences, 1);
+  assert.equal(partial.deductions.find(row => row.description.startsWith('Faltas')).value, 54.03);
+  assert.ok(partial.earnings.some(row => row.description.startsWith('Horas extras')));
 });

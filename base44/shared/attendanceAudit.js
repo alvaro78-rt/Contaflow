@@ -18,6 +18,7 @@ export const DAY_LABEL = {
   ferias: 'Férias',
   afastamento: 'Afastamento',
   futuro: 'Dia futuro',
+  em_andamento: 'Dia em andamento',
 };
 
 export const emptyStats = () => ({ worked: 0, late: 0, overtime: 0, absences: 0, pending: 0 });
@@ -92,7 +93,9 @@ export function auditMonth({
     else if (onLeave(date)) kind = 'afastamento';
     else if (dayMarks.length) {
       const review = dayReview(dayMarks, schedule, date, tolerance);
-      if (review.problems.length) {
+      if (review.problems.length && date === closedOn) {
+        kind = 'em_andamento';
+      } else if (review.problems.length) {
         kind = 'pendencia';
         problems.push(...review.problems);
       } else {
@@ -100,7 +103,7 @@ export function auditMonth({
         detail = review;
       }
     } else {
-      kind = 'falta_presumida';
+      kind = date === closedOn ? 'em_andamento' : 'falta_presumida';
     }
 
     if (holiday && dayMarks.length) {

@@ -122,7 +122,11 @@ export function validateConference(conference, {
   for (const day of audit.days) {
     if (day.kind !== 'falta_presumida') continue;
     const decision = applied.get(day.date);
-    if (!decision || decision.situation === 'falta_injustificada') {
+    if (!decision) {
+      problems.push('Conclua a conferência do dia sem marcação em ' + day.date + '.');
+      continue;
+    }
+    if (decision.situation === 'falta_injustificada') {
       unpaid.push(day.date);
       continue;
     }

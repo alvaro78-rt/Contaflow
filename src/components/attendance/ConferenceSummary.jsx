@@ -6,13 +6,12 @@ export default function ConferenceSummary({ days, counts, stats }) {
   const totals = stats || {};
   const decisions = (situation) => list.filter((day) => day.situation === situation).length;
   const presumed = map.falta_presumida || 0;
-  const confirmed = Math.max(0,
-    presumed - decisions('falta_justificada') - decisions('afastamento') - decisions('presenca'));
+  const confirmed = decisions('falta_injustificada');
   const items = [
     ['Presenças', map.presenca || 0],
-    ['Faltas presumidas', presumed],
+    ['Dias sem marcação', presumed],
     ['Justificadas', decisions('falta_justificada') + decisions('afastamento')],
-    ['Confirmadas (desconta)', confirmed],
+    ['Faltas confirmadas', confirmed],
     ['Pendências', map.pendencia || 0],
     ['Horas trabalhadas', `${fmtMin(totals.worked || 0)}h`],
   ];

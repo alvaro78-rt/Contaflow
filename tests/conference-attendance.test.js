@@ -78,13 +78,19 @@ test('férias e afastamento registrados não geram falta', () => {
 test('dia futuro não é contado como falta', () => {
   const audit = auditMonth({ marks: [], schedule, competence, today: '2026-01-15' });
   assert.equal(byDate(audit)['2026-01-20'].kind, 'futuro');
-  assert.equal(audit.stats.absences, 10);
+  assert.equal(byDate(audit)['2026-01-15'].kind, 'em_andamento');
+  assert.equal(audit.stats.absences, 9);
 });
 
 test('conferência autorizada confirma faltas presumidas e calcula o DSR por semana', () => {
   const marks = marksWithout('2026-01-05', '2026-01-06', '2026-01-20');
   const result = validateConference(
-    { status: 'autorizada', basis, days: [] },
+    {
+      status: 'autorizada', basis,
+      days: ['2026-01-05', '2026-01-06', '2026-01-20'].map(date => ({
+        date, situation: 'falta_injustificada',
+      })),
+    },
     { employee, schedule, competence, marks },
   );
   assert.deepEqual(result.problems, []);
@@ -103,7 +109,7 @@ test('justificativa com evidência abona a falta e remove o desconto', () => {
       situation: 'falta_justificada',
       justification: 'Atestado médico apresentado ao RH',
       evidence_uri: 'private://atestado',
-    }],
+    }, { date: '2026-01-06', situation: 'falta_injustificada' }],
   }, { employee, schedule, competence, marks });
   assert.deepEqual(result.problems, []);
   assert.equal(result.stats.absences, 1);
