@@ -1,6 +1,15 @@
 import React from "react";
 
-export default function AuthLayout({ icon: Icon, title, subtitle = null, footer = null, children = null }) {
+/**
+ * @param {{
+ *   icon: React.ComponentType<React.SVGProps<SVGSVGElement>>,
+ *   title: React.ReactNode,
+ *   subtitle?: React.ReactNode,
+ *   footer?: React.ReactNode,
+ *   children?: React.ReactNode,
+ * }} props
+ */
+export default function AuthLayout({ icon: Icon, title, subtitle, footer, children }) {
   return (
     <div className="min-h-screen flex items-center justify-center bg-background px-4">
       <div className="w-full max-w-md">

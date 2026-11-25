@@ -16,4 +16,4 @@ export function isValidCpf(value) {
   return check(9) === Number(cpf[9]) && check(10) === Number(cpf[10]);
 }
 
-export const cpfMessage = 'CPF inválido. Confira os números digitados.';
+export const cpfMessage = 'CPF inválido. Confira os números digitados.'; 

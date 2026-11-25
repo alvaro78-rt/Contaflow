@@ -1,5 +1,5 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Image } from '@/components/ui/image';
+import EmployeePhoto from '@/components/employees/EmployeePhoto';
 import { formatCpf, formatPis, fmtDate, money } from '@/lib/format';
 import { ROLE_LABEL } from '@/lib/auth';
 import { STATUS_TEXT } from '@/components/employees/StatusBadge';
@@ -22,7 +22,7 @@ export default function EmployeeDetails({ employee: e, positionName, onClose }) 
           <div>
             <div className="mb-4 flex items-center gap-4">
               <div className="grid h-16 w-16 shrink-0 place-items-center overflow-hidden border border-border bg-secondary">
-                {e.photo_url ? <Image src={e.photo_url} alt={e.full_name} className="h-16 w-16" fittingType="fill" /> : <span className="font-mono text-sm text-muted-foreground">{(e.full_name || '?').slice(0, 2).toUpperCase()}</span>}
+                <EmployeePhoto value={e.photo_url} name={e.full_name} className="h-16 w-16" />
               </div>
               <div>
                 <p className="font-mono text-xs text-muted-foreground">{formatCpf(e.cpf)}</p>

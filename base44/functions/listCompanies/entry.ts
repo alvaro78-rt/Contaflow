@@ -2,6 +2,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.54';
 
 import { onlyDigits } from '../../shared/cpf.ts';
 import { loadSession } from '../../shared/sessionGuard.ts';
+import { canReadCompany } from '../../shared/companyAccess.ts';
 
 // Aceita a resposta paginada do SDK, mantendo compatibilidade com SDKs que
 // retornam uma lista diretamente. Nenhum registro é modificado.
@@ -42,9 +43,12 @@ export default async function (req) {
     // Antes, a consulta com $ne acontecia mesmo para include_inactive=true.
     // Isso impedia a listagem inteira quando um provedor rejeitava o filtro.
     const companies = await allRows(Company, {}, 'name');
+    // Titularidade: a conta mestre só enxerga empresas em que é dona, gestora
+    // autorizada ou que ainda aguardam validação de titularidade (legado).
+    const allowed = companies.filter((c) => canReadCompany(actor, c));
     const visible = body?.include_inactive === true
-      ? companies
-      : companies.filter((c) => c.status !== 'inativa');
+      ? allowed
+      : allowed.filter((c) => c.status !== 'inativa');
 
     // A verificação do dono é um indicador opcional de interface. Se a leitura
     // de funcionários estiver indisponível, ainda mostramos as empresas.

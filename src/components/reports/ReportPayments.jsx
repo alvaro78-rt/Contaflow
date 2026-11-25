@@ -39,6 +39,7 @@ export default function ReportPayments({ mode = 'payments' }) {
   const fgts = p => p.informatives?.find(i => i.description?.startsWith('FGTS'))?.value;
   const complete = rows.every(p => [p.base_salary,p.total_earnings,p.total_deductions,p.net_salary,
     ...(mode === 'fgts' ? [fgts(p),p.calc_memory?.fgts_base] : [])].every(Number.isFinite));
+
   const exportCsv = () => {
     const headers = mode === 'fgts'
       ? ['Competência', 'Funcionário', 'CPF', 'Base', 'FGTS']

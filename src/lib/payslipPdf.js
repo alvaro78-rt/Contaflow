@@ -4,7 +4,11 @@ import { money, competenceLabel, formatCpf } from '@/lib/format';
 const cut = (text, size) => String(text || '').slice(0, size);
 
 // Gera o PDF do contracheque/recibo sem depender da impressão do navegador.
-export function downloadPayslipPdf(p, title = 'Contracheque') {
+export function downloadPayslipPdf(p, title = 'Contracheque', note = '') {
+  const estimated = p?.preview === true || p?.preview_only === true || ['previa', 'simulacao'].includes(p?.status);
+  const pending = !estimated && ['rascunho', 'aprovada'].includes(p?.status);
+  if (estimated) { title = 'Simulação de contracheque'; note = 'Cálculo estimado - sem validade financeira.'; }
+  else if (pending) { title = 'Contracheque não finalizado'; note = 'Folha ainda não finalizada.'; }
   const pdf = new jsPDF({ unit: 'pt', format: 'a4' });
   const width = pdf.internal.pageSize.getWidth();
   const right = width - 40;
@@ -12,12 +16,13 @@ export function downloadPayslipPdf(p, title = 'Contracheque') {
 
   pdf.setFont('helvetica', 'bold');
   pdf.setFontSize(16);
-  pdf.text('Folha/Ledger', 40, y);
+  pdf.text('ContaFlow', 40, y);
   pdf.setFontSize(11);
   pdf.text(title, right, y - 10, { align: 'right' });
   pdf.setFont('helvetica', 'normal');
   pdf.setFontSize(10);
   pdf.text(competenceLabel(p.competence), right, y + 2, { align: 'right' });
+  if (note) { pdf.setFontSize(8); pdf.text(cut(note, 110), right, y + 14, { align: 'right' }); pdf.setFontSize(10); }
 
   y += 22;
   pdf.line(40, y, right, y);
@@ -65,7 +70,7 @@ export function downloadPayslipPdf(p, title = 'Contracheque') {
   y += 26;
   pdf.rect(40, y - 12, width - 80, 30);
   pdf.setFontSize(12);
-  pdf.text('Líquido', 52, y + 6);
+  pdf.text(estimated ? 'Líquido estimado' : 'Líquido', 52, y + 6);
   pdf.text(money(p.net_salary), right - 12, y + 6, { align: 'right' });
 
   y += 40;

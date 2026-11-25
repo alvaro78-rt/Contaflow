@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import AuthShell from '@/components/auth/AuthShell';
 import Field from '@/components/Field';
 import { formatCpf, onlyDigits } from '@/lib/format';
+import { isValidCpf } from '@/lib/cpf';
 
 export default function MasterSetup() {
   const [f, setF] = useState({ full_name: '', cpf: '', password: '', confirm: '', token: '' });
@@ -17,8 +18,8 @@ export default function MasterSetup() {
 
   useEffect(() => {
     base44.functions.invoke('authCpf', { action: 'masterExists' })
-      .then((r) => setExists(!!r.data?.exists))
-      .catch(() => setExists(false));
+      .then((r) => setExists(r.data?.exists === true ? true : r.data?.exists === false ? false : null))
+      .catch(() => { setError('Não foi possível verificar se o cadastro inicial está disponível. Atualize a página.'); setExists(null); });
   }, []);
 
   const submit = async (e) => {
@@ -26,8 +27,8 @@ export default function MasterSetup() {
     setError('');
     const cpf = onlyDigits(f.cpf);
     if (!f.full_name.trim()) return setError('Informe seu nome.');
-    if (cpf.length !== 11) return setError('O CPF deve ter 11 dígitos.');
-    if (f.password.length < 6) return setError('A senha deve ter ao menos 6 caracteres.');
+    if (!isValidCpf(cpf)) return setError('CPF inválido. Confira os dígitos verificadores.');
+    if (f.password.length < 6 || f.password.length > 128) return setError('A senha deve ter ao menos 6 caracteres.');
     if (f.password !== f.confirm) return setError('As senhas não conferem.');
     if (!f.token.trim()) return setError('Informe a chave de criação do acesso mestre.');
     setBusy(true);
@@ -62,19 +63,20 @@ export default function MasterSetup() {
 
   return (
     <AuthShell
-      title="Conta mestre"
-      subtitle="O acesso que cria as empresas e escolhe qual sistema abrir. É seu, não do cliente."
+      title="Primeiro acesso — cadastrar gerente"
+      subtitle="A primeira conta recebe permissões de administração inicial (conta mestre). Funcionários são cadastrados pelo gerente após o login."
     >
+      {exists === null && <p className="mb-3 text-sm">Conferindo se a instalação já possui usuários…</p>}
       <form onSubmit={submit} className="space-y-4">
-        <Field label="Seu nome"><Input value={f.full_name} onChange={set('full_name')} /></Field>
-        <Field label="Seu CPF"><Input className="font-mono" inputMode="numeric" value={formatCpf(f.cpf)} onChange={set('cpf')} placeholder="000.000.000-00" /></Field>
+        <Field label="Nome do gerente"><Input value={f.full_name} onChange={set('full_name')} /></Field>
+        <Field label="CPF do gerente"><Input className="font-mono" inputMode="numeric" value={formatCpf(f.cpf)} onChange={set('cpf')} placeholder="000.000.000-00" /></Field>
         <Field label="Senha"><Input type="password" value={f.password} onChange={set('password')} placeholder="Mínimo 6 caracteres" autoComplete="new-password" /></Field>
         <Field label="Confirmar senha"><Input type="password" value={f.confirm} onChange={set('confirm')} autoComplete="new-password" /></Field>
         <Field label="Chave de criação"><Input type="password" value={f.token} onChange={set('token')} placeholder="Chave secreta definida no painel" autoComplete="off" /></Field>
         {error && <p className="border border-destructive bg-red-50 px-3 py-2 text-sm text-destructive">{error}</p>}
-        <Button type="submit" className="w-full" disabled={busy}>{busy ? 'Criando…' : 'Criar conta mestre'}</Button>
+        <Button type="submit" className="w-full" disabled={busy || exists !== false}>{busy ? 'Criando…' : 'Cadastrar gerente'}</Button>
         <p className="text-muted-foreground text-center text-xs">
-          Depois de criada, você entra por ela na tela de login e escolhe a empresa.
+          Depois do cadastro inicial, o botão Cadastrar-se desaparece. Acesse com CPF e senha.
         </p>
       </form>
     </AuthShell>

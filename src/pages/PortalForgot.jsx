@@ -1,9 +1,15 @@
 import { Link } from 'react-router-dom';
+import { Button } from '@/components/ui/button';
 import AuthShell from '@/components/auth/AuthShell';
 
 export default function PortalForgot() {
-  return <AuthShell title="Recuperar senha" subtitle="Solicite a redefinição ao RH da sua empresa.">
-    <p>Após confirmar sua identidade, o responsável pelo cadastro pode definir uma nova senha.</p>
-    <Link to="/login" className="font-medium text-primary underline">Voltar ao login</Link>
-  </AuthShell>;
+  return (
+    <AuthShell title="Recuperar acesso" subtitle="O gerente é responsável por cadastrar e redefinir o acesso dos funcionários.">
+      <p className="mb-4 text-sm text-muted-foreground">
+        Para redefinir a senha, solicite ao gerente ou administrador da empresa.
+        Ele poderá definir uma nova senha na edição do seu cadastro.
+      </p>
+      <Button asChild className="w-full"><Link to="/login">Voltar ao login</Link></Button>
+    </AuthShell>
+  );
 }

@@ -34,13 +34,12 @@ const buttonVariants = cva(
   }
 )
 
-const Button = React.forwardRef(
-  /** @param {React.ButtonHTMLAttributes<HTMLButtonElement> & import('class-variance-authority').VariantProps<typeof buttonVariants> & {asChild?: boolean}} props @param {React.ForwardedRef<HTMLButtonElement>} ref */
-  ({ className, variant, size, asChild = false, ...props }, ref) => {
+/** @type {React.ForwardRefExoticComponent<React.ButtonHTMLAttributes<HTMLButtonElement> & React.RefAttributes<HTMLButtonElement> & { asChild?: boolean, variant?: string, size?: string }>} */
+const Button = React.forwardRef(({ className, variant, size, asChild = false, ...props }, ref) => {
   const Comp = asChild ? Slot : "button"
   return (
     (<Comp
-      className={cn(buttonVariants({ variant, size, className }))}
+      className={cn(buttonVariants({ variant: /** @type {any} */ (variant), size: /** @type {any} */ (size), className }))}
       ref={ref}
       {...props} />)
   );

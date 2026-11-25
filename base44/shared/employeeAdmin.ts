@@ -1,4 +1,5 @@
 import { loadSession, MANAGEMENT_ROLES, scopeCompany } from './sessionGuard.ts';
+import { canReadCompany } from './companyAccess.ts';
 
 export const fail = (status, error) => Response.json({ error }, { status });
 export const ok = (data) => Response.json({ ok: true, ...data });
@@ -13,6 +14,11 @@ export async function employeeAdmin(base44, token) {
   const company = await base44.asServiceRole.entities.Company.get(companyId)
     .catch(e => e.status === 404 ? null : Promise.reject(e));
   if (!company || company.status === 'inativa') return { response: fail(403, 'sem_empresa') };
+  // A conta mestre escolhe a empresa na sessão, então o vínculo é conferido aqui.
+  // Para os demais perfis a empresa vem do próprio cadastro do funcionário.
+  if (actor.access_role === 'master' && !canReadCompany(actor, company)) {
+    return { response: fail(403, 'empresa_nao_autorizada') };
+  }
   return { actor, companyId, entities: base44.asServiceRole.entities };
 }
 

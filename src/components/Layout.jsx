@@ -12,49 +12,36 @@ export default function Layout() {
   const section = MODULES.find((m) => pathname === m.path || (m.path !== '/' && pathname.startsWith(m.path + '/')));
   const leave = async () => {
     try { await base44.functions.invoke('authCpf', { action: 'logout', token: session.token }); }
-    catch { /* A sessão local também precisa ser encerrada quando o servidor está indisponível. */ }
+    catch { /* encerra também a sessão local */ }
     finally { logout(); navigate('/login', { replace: true }); }
   };
-  // A lista de empresas pertence à conta mestre e não exige limpar a empresa
-  // no servidor. A troca efetiva só ocorre ao confirmar "Entrar" na lista.
-  // Manter a sessão evita bloqueios falsos em caso de falha de rede.
   const switchCompany = () => navigate('/empresas');
-
   return (
     <div className="min-h-screen">
-      <header className="sticky top-0 z-30 border-b border-border bg-background/90 backdrop-blur print:hidden">
-        <div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-3 px-5">
-          <Link to="/" className="flex shrink-0 items-center gap-2 font-semibold tracking-tight">
-            <span className="grid h-7 w-7 place-items-center rounded-lg bg-primary font-mono text-[12px] font-bold text-primary-foreground">C</span>
-            <span className="hidden sm:inline">Conta<span className="text-emerald-600">Flow</span></span>
+      <header className="cf-app-header sticky top-0 z-30 print:hidden">
+        <div className="mx-auto flex min-h-16 max-w-6xl flex-wrap items-center justify-between gap-3 px-5 py-3">
+          <Link to="/" className="flex shrink-0 items-center gap-3 font-semibold tracking-tight">
+            <span className="grid h-10 w-10 place-items-center rounded-xl bg-white text-lg font-bold text-primary">C</span>
+            <span className="leading-tight">Conta<span className="text-green-300">Flow</span></span>
           </Link>
           <div className="flex min-w-0 items-center gap-3">
             {pathname !== '/' && (
-              <Link to="/" className="hidden items-center gap-1 border border-border bg-card px-3 py-1.5 text-sm transition-colors hover:border-emerald-600 hover:text-emerald-700 sm:flex">
-                <ArrowLeft className="h-3.5 w-3.5" /> Painel
-              </Link>
+              <Link to="/" className="cf-header-action flex items-center gap-1 px-3 py-2 text-sm"><ArrowLeft className="h-4 w-4"/> Painel</Link>
             )}
             <div className="min-w-0 text-right">
               <p className="truncate text-xs font-medium leading-tight">{session?.name}</p>
-              <p className="font-mono text-[10px] uppercase tracking-wide text-muted-foreground">{ROLE_LABEL[session?.role]}</p>
+              <p className="text-[10px] uppercase tracking-wide text-blue-100">{ROLE_LABEL[session?.role]}</p>
             </div>
-            <button onClick={leave} title="Sair" className="flex shrink-0 items-center gap-1.5 border border-border bg-card px-2.5 py-1.5 text-xs font-medium transition-colors hover:border-destructive hover:text-destructive">
-              <LogOut className="h-3.5 w-3.5" />
-              Sair
-            </button>
+            <button type="button" onClick={leave} title="Sair" className="cf-header-action flex shrink-0 items-center gap-1.5 px-3 py-2 text-xs font-medium"><LogOut className="h-4 w-4"/> Sair</button>
           </div>
         </div>
-        <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-0.5 border-t border-border bg-secondary/40 px-5 py-1 text-center font-mono text-[10px] uppercase tracking-wide text-muted-foreground">
+        <div className="cf-app-subbar flex flex-wrap items-center justify-center gap-x-3 gap-y-1 px-5 py-2 text-center text-xs">
           <span>{session?.company_name || 'Conta mestre'}</span>
           {section && <span>· [{section.code}] {section.title}</span>}
-          {session?.master && session?.company_id && (
-            <button onClick={switchCompany} className="font-medium underline underline-offset-2 hover:text-foreground">Minhas empresas · Criar empresa</button>
-          )}
+          {session?.master && session?.company_id && <button type="button" onClick={switchCompany} className="font-medium text-green-300 underline underline-offset-2">Minhas empresas · Criar empresa</button>}
         </div>
       </header>
-      <main className="mx-auto max-w-6xl px-5 py-10 print:p-0">
-        <Outlet />
-      </main>
+      <main className="cf-app-main mx-auto max-w-6xl px-5 py-8 print:p-0"><Outlet/></main>
     </div>
   );
 }

@@ -2,6 +2,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.54';
 import { employeeAdmin, fail, ok, scopedRecord } from '../../shared/employeeAdmin.ts';
 import { benefitEntities, recordBenefit } from '../../shared/benefitRecords.js';
 import { monthStats } from '../../shared/payrollCalculation.js';
+import { auditMonth } from '../../shared/attendanceAudit.js';
 import { consistentReceipt, verifiedTable } from '../../shared/payrollReview.js';
 import {
   hasUnscopedHistory,
@@ -33,16 +34,31 @@ async function attendance({ entities, companyId, actor }, body) {
   ]);
   if (unresolved.some(Boolean)) return fail(409, 'historico_sem_empresa');
   if (body.action === 'time') {
-    const [marks, payrolls, schedule] = await Promise.all([
+    const [marks, payrolls, schedule, vacations] = await Promise.all([
       entities.TimeRecord.filter({ ...query, date: body.date || monthRange(month) }, {
         sort: 'date',
         limit: 500,
       }),
       entities.Payroll.filter({ ...query, competence: month }, { limit: 1 }),
       scopedRecord(entities.WorkSchedule, employee.schedule_id, companyId),
+      entities.Vacation.filter({
+        ...query,
+        start_date: { $lte: monthRange(month).$lte },
+        end_date: { $gte: monthRange(month).$gte },
+      }, { limit: 5 }),
     ]);
     if (marks.next_cursor) return fail(409, 'limite_consulta');
-    return ok({ items: marks.items, locked: payrolls.items.length > 0, schedule });
+    // Apuração automática do mês: faltas presumidas, pendências, férias e afastamentos.
+    const audit = body.date ? null : auditMonth({
+      marks: marks.items,
+      schedule,
+      competence: month,
+      vacations: vacations.items,
+      admissionDate: employee.admission_date,
+      employeeStatus: employee.status,
+      statusDate: employee.status_date,
+    });
+    return ok({ items: marks.items, locked: payrolls.items.length > 0, schedule, audit });
   }
   if (
     !validDate(body.date) || !validTime(body.time) || typeof body.reason !== 'string' ||

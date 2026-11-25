@@ -57,17 +57,19 @@ export default function CompanyPanel() {
         ] : []),
       ]
     : [];
-  const visibleModules = session?.role === 'gerente'
-    ? MODULES.filter((m) => MANAGER_MODULES.includes(m.path))
-    : MODULES;
+  // Oculta somente o cartão de diagnóstico; mantém as permissões dos demais módulos.
+  const visibleModules = MODULES.filter((m) =>
+    m.path !== '/diagnostico' && m.code !== 'RF21' &&
+    (session?.role !== 'gerente' || MANAGER_MODULES.includes(m.path))
+  );
 
   return (
-    <div className="space-y-8">
-      <section className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-950 via-blue-950 to-blue-900 p-6 text-white shadow-sm sm:p-9">
-        <div className="pointer-events-none absolute -right-16 -top-24 h-72 w-72 rounded-full border border-white/10" aria-hidden="true" />
+    <div className="cf-dashboard space-y-6">
+      <section className="cf-dashboard-hero relative isolate overflow-hidden rounded-2xl p-6 text-white shadow-sm sm:p-8">
+        <div className="cf-hero-ring pointer-events-none absolute -right-12 -top-24 h-64 w-64 rounded-full" aria-hidden="true" />
         <div className="relative flex flex-col items-start justify-between gap-6 lg:flex-row lg:items-end">
           <div>
-            <p className="mb-3 font-mono text-[11px] font-medium uppercase tracking-[0.2em] text-sky-200">ContaFlow · Painel administrativo</p>
+            <p className="mb-3 font-mono text-[11px] font-medium uppercase tracking-[0.2em] text-sky-200">Painel administrativo</p>
             <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
               {data?.company?.name || session?.company_name || 'Sua empresa'}
             </h1>
@@ -123,8 +125,8 @@ export default function CompanyPanel() {
         {stats.length > 0 && (
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             {stats.map(([label, value]) => (
-              <div key={label} className="rounded-xl border border-border bg-card p-5 shadow-sm">
-                <p className="font-mono text-xl font-semibold tracking-tight sm:text-2xl">{value}</p>
+              <div key={label} className="cf-dashboard-stat rounded-xl border border-border bg-card p-4 shadow-sm">
+                <p className="font-mono text-xl font-semibold tracking-tight text-primary sm:text-2xl">{value}</p>
                 <p className="mt-2 text-xs text-muted-foreground">{label}</p>
               </div>
             ))}
@@ -138,8 +140,8 @@ export default function CompanyPanel() {
           <p className="text-sm text-muted-foreground">Escolha a atividade que deseja realizar.</p>
         </div>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {visibleModules.map(({ path, code, title, desc, icon: Icon }) => (
-            <Link key={path} to={path} className="group rounded-xl border border-border bg-card p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md">
+          {visibleModules.map(({ path, title, desc, icon: Icon }) => (
+            <Link key={path} to={path} className="cf-module-card group rounded-xl border border-border bg-card p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md">
               <div className="flex items-center justify-between">
                 <span className="grid h-10 w-10 place-items-center rounded-lg bg-blue-50 text-blue-700">
                   <Icon className="h-5 w-5" strokeWidth={1.7} />
@@ -148,7 +150,6 @@ export default function CompanyPanel() {
               </div>
               <h3 className="mt-4 font-semibold">{title}</h3>
               <p className="mt-1 text-sm leading-relaxed text-muted-foreground">{desc}</p>
-              <span className="mt-4 block font-mono text-[10px] text-muted-foreground">{code}</span>
             </Link>
           ))}
         </div>

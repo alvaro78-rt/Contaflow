@@ -42,3 +42,5 @@ jobs:
           deno-version: v2.x
       - name: Testes de backend com entidades fictícias em memória
         run: deno test --no-config --no-check --no-lock --node-modules-dir=none --import-map=tests/import-map.json tests/backend_test.js
+      - name: Integração HTTP local com dados fictícios
+        run: deno test --allow-net=127.0.0.1 --no-config --no-check --no-lock --node-modules-dir=none --import-map=tests/import-map.json tests/http_integration.js

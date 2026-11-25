@@ -131,7 +131,7 @@ export function validatePayrollInput({ employee, schedule, table }) {
   if (employee && !(Number(employee.base_salary) > 0)) problems.push('Salário-base não informado — complete o cadastro do funcionário.');
   if (employee && !employee.admission_date) problems.push('Data de admissão não informada — complete o cadastro do funcionário.');
   if (!schedule) problems.push('Jornada de trabalho não definida — sem ela não é possível apurar atrasos, faltas e horas extras.');
-  if (!table) problems.push('Nenhuma tabela legal vigente para esta competência. Cadastre ou ajuste a vigência em Parâmetros legais.');
+  // A ausência ou divergência da tabela legal é diagnosticada por legalTableCheck.
   return problems;
 }
 

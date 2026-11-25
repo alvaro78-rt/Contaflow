@@ -8,12 +8,18 @@ import {
   validMonth,
   withEmployeeLock,
 } from '../../shared/attendance.js';
-import { consistentReceipt, reviewAttendance, verifiedTable } from '../../shared/payrollReview.js';
+import { auditMonth } from '../../shared/attendanceAudit.js';
+import { validateConference } from '../../shared/conferenceAttendance.js';
+import { consistentReceipt, reviewAttendance } from '../../shared/payrollReview.js';
+import { legalTableCheck as sharedLegalTableCheck } from '../../shared/legalTableSelection.js';
+import { PAYROLL_SERVICE_RELEASE } from '../../shared/payrollRelease.ts';
 
-const incomplete = (problems) => Response.json({ error: 'cadastro_incompleto', problems }, { status: 422 });
+// Bloqueio por funcionário: expira em LOCK_TTL_MS e a liberação fica registrada
+// em LockRelease. Dois cálculos simultâneos do mesmo funcionário nunca acontecem.
+
+const incomplete = (problems, extra) =>
+  Response.json({ error: 'cadastro_incompleto', problems, ...(extra || {}) }, { status: 422 });
 const localToday = () => new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Recife' }).format(new Date());
-// Marca da lógica ativa, consultável somente com uma sessão válida.
-const PAYROLL_SERVICE_RELEASE = '2026-11-20-payroll-stage-diagnostics-v2';
 
 // Never treat an unclassified dependent as a tax dependent.
 function savedTaxDependents(employee) {
@@ -25,42 +31,24 @@ function savedTaxDependents(employee) {
   return employee.dependents.filter((dep) => dep.tax_dependent).length;
 }
 
-// Apenas feriados nacionais confirmados para 2026 (Portaria MGI 11.460/2025).
-// Pontos facultativos e feriados estaduais/municipais não são presumidos.
-// https://www.gov.br/gestao/pt-br/assuntos/noticias/2025/dezembro/confira-o-calendario-oficial-de-feriados-nacionais-e-pontos-facultativos-em-2026
-const NATIONAL_HOLIDAYS_2026 = new Set([
-  '2026-01-01', '2026-04-03', '2026-04-21', '2026-05-01', '2026-09-07',
-  '2026-10-12', '2026-11-02', '2026-11-15', '2026-11-20', '2026-12-25',
-]);
-
-function paidNationalHolidays(competence, schedule, records, admissionDate = '') {
-  if (!Array.isArray(schedule?.work_days) || !Array.isArray(records)) return [];
-  const marked = new Set(records.map((r) => r.date));
-  return [...NATIONAL_HOLIDAYS_2026].filter((date) =>
-    date.startsWith(competence + '-') && (!admissionDate || date >= admissionDate) &&
-    schedule.work_days.includes(new Date(date).getUTCDay()) &&
-    !marked.has(date));
-}
-
 function automaticReview(employee, body) {
   if (body.automatic !== true) return { ...body, provisional: false };
+  const closing = body.action === 'calculateAndFinalize';
   return {
     ...body,
-    payment_date: localToday(), // reference for an estimated calculation, not proof of actual payment
+    payment_date: closing ? body.payment_date : localToday(), // data informada pelo responsável no fechamento
     tax_dependents: savedTaxDependents(employee),
     paid_days: [],
     unpaid_days: [],
     dsr_extra: 0,
     dsr_discount: 0,
-    reviewed_inputs: true, // permits a preliminary draft only
+    reviewed_inputs: true, // dados apurados pelo servidor; fechamento exige as validações abaixo
     provisional: true,
   };
 }
-const applies = (t, comp) =>
-  t.active !== false && validMonth(t.start_competence) &&
-  t.start_competence <= comp && (!t.end_competence || t.end_competence >= comp);
-
-async function calculate({ entities, companyId, actor }, emp, body, setStage = () => {}) {
+async function calculate({ entities, companyId, actor }, emp, body, setStage, draft = null) {
+  const closing = body.action === 'calculateAndFinalize';
+  if (closing && (body.automatic !== true || !['master', 'admin'].includes(actor.access_role))) return fail(403, 'sem_permissao');
   const inputs = automaticReview(emp, body);
   const { competence, payment_date, tax_dependents, paid_days, unpaid_days, dsr_extra, dsr_discount } = inputs;
   const query = { company_id: companyId, employee_id: emp.id };
@@ -87,6 +75,7 @@ async function calculate({ entities, companyId, actor }, emp, body, setStage = (
     ]);
   }
   const admittedThisMonth = emp.admission_date > range.$gte;
+  if (closing && admittedThisMonth) return fail(422, 'admissao_no_mes');
   setStage('historico_legado');
   const legacy = await Promise.all([
     hasUnscopedHistory(entities.TimeRecord, { employee_id: emp.id, date: range }),
@@ -95,7 +84,7 @@ async function calculate({ entities, companyId, actor }, emp, body, setStage = (
   ]);
   if (legacy.some(Boolean)) return fail(409, 'historico_sem_empresa');
   setStage('consultas_competencia');
-  const [position, schedule, marks, rubrics, tables, vacations, terminations] = await Promise.all([
+  const [position, schedule, marks, rubrics, tables, vacations, terminations, conferences] = await Promise.all([
     scopedRecord(entities.Position, emp.position_id, companyId),
     scopedRecord(entities.WorkSchedule, emp.schedule_id, companyId),
     entities.TimeRecord.filter({ ...query, date: range }, { limit: 500 }),
@@ -105,27 +94,32 @@ async function calculate({ entities, companyId, actor }, emp, body, setStage = (
       limit: 1,
     }),
     entities.Termination.filter({ ...query, termination_date: { $lte: range.$lte } }, { limit: 1 }),
+    // Frequência comprovada: conferência mensal autorizada pelo RH.
+    entities.AttendanceConference.filter(
+      { ...query, competence, status: 'autorizada' },
+      { limit: 2 },
+    ),
   ]);
   if ([marks, rubrics, tables].some((r) => !Array.isArray(r.items) || r.next_cursor)) {
     return fail(409, 'limite_consulta');
   }
+  if (conferences.next_cursor || conferences.items.length > 1) {
+    return fail(409, 'conferencia_duplicada');
+  }
+  const conference = conferences.items[0] || null;
   if (vacations.items.length || terminations.items.length) {
     return incomplete(['Há férias ou rescisão a conciliar nesta competência.']);
   }
-  const applicable = tables.items.filter((t) => applies(t, competence));
-  const table = applicable.length === 1 ? applicable[0] : null;
+  const check = sharedLegalTableCheck(tables.items, competence, payment_date);
+  const table = check.table;
   const problems = validatePayrollInput({ employee: emp, schedule, table });
+  problems.push(...check.problems);
   if (!emp.full_name || !emp.cpf) problems.push('Confira a identificação do funcionário.');
   if (
     !position || !Number.isFinite(emp.base_salary) || !Number.isFinite(emp.weekly_hours) ||
     emp.weekly_hours <= 0
   ) {
     problems.push('Confira cargo, salário e carga horária semanal.');
-  }
-  if (!verifiedTable(table, competence, payment_date) || !applies(table || {}, payment_date.slice(0, 7))) {
-    problems.push(
-      'Confira a vigência e as faixas oficiais de INSS e IRRF de 2026. É necessária uma única tabela compatível com o pagamento.',
-    );
   }
   if (
     rubrics.items.some((r) =>
@@ -136,77 +130,114 @@ async function calculate({ entities, companyId, actor }, emp, body, setStage = (
   ) {
     problems.push('Revise a natureza e as incidências de cada rubrica automática.');
   }
-  // Sem qualquer marcação, o ponto não permite identificar faltas, horas extras ou atrasos.
-  // Mostre somente uma prévia NÃO SALVA, nunca uma folha de pagamento aprovada/finalizável.
-  if (inputs.provisional && marks.items.length === 0) {
-    if (problems.length) return incomplete(problems);
-    setStage('previa_calculo');
-    const estimate = buildPayroll({
-      employee: emp,
-      positionName: position.name,
-      competence,
-      stats: { worked: 0, late: 0, overtime: 0, absences: 0, dsrExtra: 0, dsrDiscount: 0 },
-      rubrics: rubrics.items,
-      table,
-      paymentDate: payment_date,
-      taxDependents: tax_dependents,
-      admissionDate: emp.admission_date,
-    });
-    if (!consistentReceipt(estimate)) return fail(422, 'valores_inconsistentes');
-    return ok({
-      preview_only: true,
-      payroll: {
-        ...estimate,
-        id: null,
-        preview_only: true,
-        attendance_pending: true,
-        status: 'rascunho',
-      },
-    });
-  }
-
-  const calendarPaidDays = inputs.provisional
-    ? paidNationalHolidays(competence, schedule, marks.items, emp.admission_date)
-    : paid_days;
-  setStage('conferencia_ponto');
-  const review = reviewAttendance(
-    marks.items,
+  // Apuração automática do mês: compara as marcações com a jornada cadastrada.
+  // Faltas presumidas (dia de jornada encerrado sem marcação) só geram desconto
+  // depois da conferência autorizada; marcações incompletas são pendência de ponto.
+  const audit = auditMonth({
+    marks: marks.items,
     schedule,
     competence,
-    calendarPaidDays,
-    unpaid_days,
-    table?.tolerance_minutes,
-    emp.admission_date,
-  );
-  problems.push(...review.problems);
-  if (inputs.provisional) {
-    const holidayWork = [...new Set(marks.items
-      .filter((r) => NATIONAL_HOLIDAYS_2026.has(r.date)).map((r) => r.date))];
-    if (holidayWork.length) problems.push(
-      'Há marcações em feriado nacional (' + holidayWork.join(', ') +
-      '). A remuneração especial desse trabalho exige conferência.',
+    vacations: vacations.items,
+    admissionDate: emp.admission_date,
+    employeeStatus: emp.status,
+    statusDate: emp.status_date,
+    tolerance: table?.tolerance_minutes,
+  });
+
+  if (!conference && marks.items.length === 0 && !draft) {
+    if (problems.length) return incomplete(problems, check.codes.length ? { table_codes: check.codes } : null);
+    return Response.json({
+      error: 'ponto_sem_registros',
+      problems: [
+        'Não há marcações nesta competência. Confira cada dia sem marcação e autorize a frequência antes de gerar a folha oficial.',
+      ],
+      conference_required: true,
+    }, { status: 422 });
+  }
+
+  let calendarPaidDays = paid_days;
+  let effectiveUnpaid = unpaid_days;
+  let dsrDiscount = dsr_discount;
+  let dsrLostDays = 0;
+  let stats;
+  setStage('conferencia_ponto');
+  if (conference) {
+    const audited = validateConference(conference, {
+      employee: emp,
+      schedule,
+      competence,
+      marks: marks.items,
+      vacations: vacations.items,
+      tolerance: table?.tolerance_minutes,
+    });
+    if (audited.problems.length) {
+      return Response.json({ error: 'conferencia_incompleta', problems: audited.problems }, { status: 422 });
+    }
+    stats = audited.stats;
+    calendarPaidDays = audited.paid_days;
+    effectiveUnpaid = audited.unpaid_days;
+    dsrLostDays = audited.dsr_lost_days;
+    // DSR automático: cada semana com falta injustificada perde um dia de descanso.
+    const divisor = Number(table?.absence_divisor) || 30;
+    dsrDiscount = Math.round((Number(emp.base_salary) || 0) / divisor * dsrLostDays * 100) / 100;
+  } else if (inputs.provisional) {
+    problems.push(...audit.problems);
+    const pending = audit.days.filter((day) => day.kind === 'pendencia').map((day) => day.date);
+    if (pending.length) {
+      return Response.json({
+        error: 'ponto_pendente',
+        problems: pending.map((date) => 'Marcação incompleta em ' + date + ': corrija na Correção de Ponto antes de gerar a folha.'),
+        pending_dates: pending,
+      }, { status: 422 });
+    }
+    const presumed = audit.days.filter((day) => day.kind === 'falta_presumida').map((day) => day.date);
+    if (presumed.length) {
+      return Response.json({
+        error: 'conferencia_necessaria',
+        problems: [
+          'A apuração encontrou ' + presumed.length + ' dia(s) sem marcação (' +
+          presumed.join(', ') + '). Confira a frequência, justifique o que estiver comprovado e autorize a conferência antes de aplicar descontos.',
+        ],
+        presumed_dates: presumed,
+      }, { status: 422 });
+    }
+    stats = audit.stats;
+    calendarPaidDays = audit.paid_days;
+    if (stats?.overtime > 0) {
+      problems.push('Há horas extras registradas. O reflexo no DSR não está cadastrado e não pode ser presumido.');
+    }
+    if (stats?.late > 0) {
+      problems.push('Há atrasos que exigem apuração de DSR antes de gerar a folha.');
+    }
+  } else {
+    // Fluxo manual de conferência (histórico): datas e DSR informados pelo RH.
+    const review = reviewAttendance(
+      marks.items,
+      schedule,
+      competence,
+      calendarPaidDays,
+      effectiveUnpaid,
+      table?.tolerance_minutes,
+      emp.admission_date,
     );
-  }
-  const { stats } = review;
-  if (inputs.provisional && stats?.overtime > 0) {
-    problems.push('Há horas extras registradas. O reflexo no DSR não está cadastrado e não pode ser presumido.');
-  }
-  if (inputs.provisional && (stats?.absences > 0 || stats?.late > 0)) {
-    problems.push('Há faltas ou atrasos que exigem apuração de DSR antes de gerar a folha.');
+    problems.push(...review.problems);
+    stats = review.stats;
   }
   if (
-    ![dsr_extra, dsr_discount].every((v) =>
+    ![dsr_extra, dsrDiscount].every((v) =>
       Number.isFinite(v) && v >= 0 && Math.abs(v * 100 - Math.round(v * 100)) < .00001
     ) ||
-    (dsr_extra > 0 && !stats?.overtime) || (dsr_discount > 0 && !stats?.absences && !stats?.late)
+    (dsr_extra > 0 && !stats?.overtime) || (dsrDiscount > 0 && !stats?.absences && !stats?.late)
   ) {
     problems.push(
       'Informe o reflexo de extras e a perda de DSR conferidos, inclusive zero quando inaplicáveis.',
     );
   }
-  if (problems.length) return incomplete(problems);
+  // A rotina automática não conhece reflexos de extras/atrasos não conferidos.
+  if (closing && (stats?.overtime > 0 || stats?.late > 0)) problems.push('Há horas extras ou atrasos que exigem conferência dos reflexos no DSR antes do fechamento.');
+  if (problems.length) return incomplete(problems, check.codes.length ? { table_codes: check.codes } : null);
   stats.dsrExtra = dsr_extra;
-  stats.dsrDiscount = dsr_discount;
+  stats.dsrDiscount = dsrDiscount;
   setStage('motor_calculo');
   const data = buildPayroll({
     employee: emp,
@@ -220,54 +251,80 @@ async function calculate({ entities, companyId, actor }, emp, body, setStage = (
     admissionDate: emp.admission_date,
   });
   if (!consistentReceipt(data)) return fail(422, 'valores_inconsistentes');
+  if (closing && (!data.legal_table_id || data.earnings?.some(item => item.description?.includes('estimativa')))) return fail(422, 'valores_inconsistentes');
+  const now = new Date().toISOString();
   setStage('gravacao_folha');
-  return ok({
-    payroll: await entities.Payroll.create({
-      ...data,
-      ...query,
-      input_review: {
-        payment_date: inputs.provisional ? '' : payment_date,
-        calculation_reference_date: inputs.provisional ? payment_date : null,
-        payment_date_confirmed: !inputs.provisional,
-        tax_dependents,
-        paid_days: calendarPaidDays,
-        unpaid_days,
-        dsr_extra,
-        dsr_discount,
-        actor_id: actor.id,
-        source: inputs.provisional ? 'automatic' : 'manual',
-        admission_partial: admittedThisMonth,
-        version: inputs.provisional ? 2 : 1,
-      },
-    }),
-  });
+  const fields = {
+    ...data,
+    ...(closing ? { status: 'finalizada', reviewed_by: actor.full_name || actor.id, reviewer_id: actor.id, reviewed_at: now, finalized_at: now, finalizer_id: actor.id } : {}),
+    input_review: {
+      payment_date: inputs.provisional && !closing ? '' : payment_date,
+      calculation_reference_date: inputs.provisional ? payment_date : null,
+      payment_date_confirmed: closing || !inputs.provisional,
+      tax_dependents,
+      paid_days: calendarPaidDays,
+      unpaid_days: effectiveUnpaid,
+      dsr_extra,
+      dsr_discount: dsrDiscount,
+      dsr_lost_days: dsrLostDays,
+      actor_id: actor.id,
+      source: inputs.provisional ? 'automatic' : 'manual',
+      attendance_source: conference ? 'conferencia' : 'ponto',
+      conference_id: conference?.id || '',
+      conference_authorized_by: conference?.authorized_by_name || '',
+      conference_authorized_at: conference?.authorized_at || '',
+      conference_basis: conference?.basis || '',
+      admission_partial: admittedThisMonth,
+      version: inputs.provisional ? 2 : 1,
+    },
+  };
+  if (draft) {
+    const result = await entities.Payroll.updateMany({
+      ...query, id: draft.id, competence, status: 'rascunho',
+    }, { $set: fields });
+    if (result.updated !== 1) return fail(409, 'situacao_invalida');
+    return ok({ payroll: { ...draft, ...fields } });
+  }
+  return ok({ payroll: await entities.Payroll.create({ ...fields, ...query }) });
 }
 
 export default async function (req) {
-  if (req.method !== 'POST') return fail(405, 'metodo_invalido');
-  let stage = 'requisicao';
+  if (req.method !== 'POST') {
+    return Response.json({ error: 'metodo_invalido' }, {
+      status: 405,
+      headers: { Allow: 'POST', 'Cache-Control': 'no-store', 'X-ContaFlow-Payroll-Release': PAYROLL_SERVICE_RELEASE },
+    });
+  }
+  const body = await req.json().catch(() => null);
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return fail(400, 'requisicao_invalida');
+  let stage = 'autorizacao';
   const setStage = (next) => { stage = next; };
   try {
-    const body = await req.json();
-    setStage('autorizacao');
     const admin = await employeeAdmin(createClientFromRequest(req), body?.token);
     if (admin.response) return admin.response;
     const { companyId, entities, actor } = admin;
     const action = body.action;
     // Diagnóstico autenticado, somente leitura: não acessa ponto nem gera folha.
-    if (action === 'release') return ok({ service: 'payrollService', release: PAYROLL_SERVICE_RELEASE, attendance_preview: true });
-    if (!['calculate', 'view', 'approve', 'finalize'].includes(action)) return fail(400, 'acao_invalida');
+    if (action === 'release') return ok({ service: 'payrollService', release: PAYROLL_SERVICE_RELEASE, attendance_preview: true, close_validated: true });
+    if (!['calculate', 'calculateAndFinalize', 'view', 'confirmPaymentDate', 'approve', 'finalize'].includes(action)) return fail(400, 'acao_invalida');
+    // O cliente informa a versão que espera; se o servidor estiver em outra, nada é
+    // calculado nem gravado. Protege contra cliente e serviço em versões diferentes.
+    if (body.expected_release && body.expected_release !== PAYROLL_SERVICE_RELEASE) {
+      return fail(409, 'versao_desatualizada');
+    }
     if (actor.access_role === 'gerente' && action !== 'calculate') return fail(403, 'sem_permissao');
+    if (action === 'calculateAndFinalize' && (!['master', 'admin'].includes(actor.access_role) || body.automatic !== true || !validDate(body.payment_date) || body.expected_release !== PAYROLL_SERVICE_RELEASE)) return fail(422, 'fechamento_nao_confirmado');
     if (action !== 'view' && body.expected_company_id !== companyId) return fail(409, 'empresa_alterada');
-    const transition = action === 'approve' || action === 'finalize';
-    const target = transition ? await scopedRecord(entities.Payroll, body.payroll_id, companyId) : null;
-    if (transition && !target) return fail(404, 'folha_inexistente');
-    const competence = transition ? target.competence : body.competence;
+    const existingOperation = ['confirmPaymentDate', 'approve', 'finalize'].includes(action);
+    setStage('consulta_folha');
+    const target = existingOperation ? await scopedRecord(entities.Payroll, body.payroll_id, companyId) : null;
+    if (existingOperation && !target) return fail(404, 'folha_inexistente');
+    const competence = existingOperation ? target.competence : body.competence;
     if (!validMonth(competence)) return fail(400, 'competencia_invalida');
     setStage('funcionario');
     const employee = await scopedRecord(
       entities.Employee,
-      transition ? target.employee_id : body.employee_id,
+      existingOperation ? target.employee_id : body.employee_id,
       companyId,
     );
     if (!employee || employee.access_role === 'master') return fail(404, 'funcionario_inexistente');
@@ -282,12 +339,28 @@ export default async function (req) {
       if (rows.next_cursor || rows.items.length > 1) return fail(409, 'folhas_duplicadas');
       const row = rows.items[0];
       if (action === 'view') return ok({ payroll: row || null });
-      if (action === 'calculate') {
+      if (action === 'calculate' || action === 'calculateAndFinalize') {
         if (row) return ok({ payroll: row, existing: true, existing_final: row.status === 'finalizada' });
         return await calculate(admin, employee, body, setStage);
       }
-      if (!row || row.id !== target.id || row.status !== (action === 'approve' ? 'rascunho' : 'aprovada')) {
+      if (!row || row.id !== target.id || row.status !== (action === 'finalize' ? 'aprovada' : 'rascunho')) {
         return fail(409, 'situacao_invalida');
+      }
+      if (action === 'confirmPaymentDate') {
+        const review = row.input_review;
+        if (review?.version !== 2 || review.payment_date_confirmed === true || review.payment_date) {
+          return fail(409, 'situacao_invalida');
+        }
+        return await calculate(admin, employee, {
+          competence,
+          payment_date: body.payment_date,
+          tax_dependents: review.tax_dependents,
+          paid_days: review.paid_days,
+          unpaid_days: review.unpaid_days,
+          dsr_extra: review.dsr_extra,
+          dsr_discount: review.dsr_discount,
+          reviewed_inputs: true,
+        }, setStage, row);
       }
       if (row.earnings?.some((item) => item.description?.includes('estimativa'))) {
         return incomplete([

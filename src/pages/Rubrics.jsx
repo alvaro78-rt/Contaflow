@@ -72,12 +72,12 @@ export default function Rubrics() {
           <div key={cat} className="border border-border bg-card">
             <p className="border-b border-border px-4 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</p>
             {list.filter((r) => r.category === cat).map((r) => (
-              <div key={r.id} className="flex items-center justify-between border-b border-border/60 px-4 py-2 text-sm">
-                <div>
+              <div key={r.id} className="flex flex-wrap items-center justify-between gap-2 border-b border-border/60 px-4 py-2 text-sm">
+                <div className="min-w-0 break-words">
                   <p>{r.name}{r.auto_apply && <span className="ml-2 font-mono text-[11px] text-emerald-700">auto · {money(r.fixed_value)}</span>}</p>
                   {r.description && <p className="text-xs text-muted-foreground">{r.description}</p>}
                 </div>
-                <button className="text-xs text-emerald-700 underline" onClick={() => { setEditId(r.id); setF({ ...EMPTY, ...r, fixed_value: r.fixed_value || '' }); }}>Alterar</button>
+                <button className="shrink-0 text-xs text-emerald-700 underline" onClick={() => { setEditId(r.id); setF({ ...EMPTY, ...r, fixed_value: r.fixed_value || '' }); }}>Alterar</button>
               </div>
             ))}
             {list.filter((r) => r.category === cat).length === 0 && <p className="px-4 py-3 text-sm text-muted-foreground">Nenhuma rubrica.</p>}

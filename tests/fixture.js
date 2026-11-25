@@ -41,7 +41,11 @@ export function fixture() {
     admission_date: '2025-01-01',
   }));
   return seed({
-    Company: [{ id: 'A', status: 'ativa' }, { id: 'B', status: 'ativa' }],
+    // A pertence à conta mestre do teste; B pertence a outro proprietário.
+    Company: [
+      { id: 'A', status: 'ativa', owner_cpf: '52998224725' },
+      { id: 'B', status: 'ativa', owner_cpf: '39053344705' },
+    ],
     Employee: employees,
     AuthSession: employees.map((e) => ({
       id: 's' + e.id,
@@ -60,6 +64,7 @@ export function fixture() {
     }],
     Position: [{ id: 'cargo', company_id: 'A', name: 'Cargo' }],
     TimeRecord: [],
+    AttendanceConference: [],
     Payroll: [],
     LegalTable: [structuredClone(table)],
     Rubric: [],

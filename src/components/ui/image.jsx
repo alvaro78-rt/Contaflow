@@ -18,10 +18,17 @@ const FALLBACK_IMAGE_URL =
  * as a plain <img>. Failed transforms retry the original URL; only a broken
  * original swaps to the generic fallback image.
  */
-/** @type {React.ForwardRefExoticComponent<React.ImgHTMLAttributes<HTMLImageElement> & {
- * fittingType?: "fill" | "fit", originWidth?: number, originHeight?: number,
- * focalPointX?: number, focalPointY?: number, quality?: number
- * } & React.RefAttributes<HTMLImageElement>>} */
+/**
+ * @type {React.ForwardRefExoticComponent<React.ImgHTMLAttributes<HTMLImageElement> & React.RefAttributes<HTMLImageElement> & {
+ *   src?: string,
+ *   fittingType?: 'fill' | 'fit',
+ *   originWidth?: number,
+ *   originHeight?: number,
+ *   focalPointX?: number,
+ *   focalPointY?: number,
+ *   quality?: number,
+ * }>}
+ */
 const Image = React.forwardRef(
   (
     {
